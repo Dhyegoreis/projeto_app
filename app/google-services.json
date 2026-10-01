@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "946845307650",
+    "project_id": "goianinho-1cc1f",
+    "storage_bucket": "goianinho-1cc1f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:946845307650:android:aee867dacf0fc62937e81b",
+        "android_client_info": {
+          "package_name": "com.goianinho.medicina"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgNjsCOg_VCAvdb_iiQwY00lgOtq1VwIE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
