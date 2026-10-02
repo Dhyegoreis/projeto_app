@@ -7,7 +7,7 @@
 ![Firebase](https://img.shields.io/badge/Firebase-DD2C00?logo=firebase&logoColor=white)
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-0F6E6A)
 
-> Trabalho de Conclusão de Curso — Engenharia de Software, Centro Universitário Alfredo Nasser (UNIFAN).
+> > Projeto da disciplina **Softwares para Dispositivos Móveis** — Engenharia de Software, Centro Universitário Alfredo Nasser (UNIFAN).
 
 ---
 
@@ -138,7 +138,13 @@ O arquivo `google-services.json` já está no repositório (privado), então o a
 | 4 · Agenda | [INTEGRANTE 4] | `feature/agenda` | Agenda | Agenda do dia |
 
 **Líder do projeto e arquitetura:** Dhyego Ferreira dos Reis
-**Orientação:** [NOME DO ORIENTADOR]
+
+**Equipe de desenvolvimento e testes:**
+
+- Felipe Caetano
+- Antony Gabriel
+- João Victor de Sousa
+- Dhyego Ferreira dos Reis
 
 ### Como o time trabalha
 
