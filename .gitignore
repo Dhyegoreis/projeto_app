@@ -1,10 +1,29 @@
-*.iml
+# Gradle e compilação
 .gradle
-/local.properties
-/.idea
-/.kotlin
-.DS_Store
-/build
+build/
 /captures
 .externalNativeBuild
 .cxx
+
+# IDE (IntelliJ / Android Studio)
+*.iml
+/.idea
+/.kotlin
+
+# Configuração local de cada computador
+/local.properties
+
+# Arquivos gerados do app
+*.apk
+*.aab
+
+# Chaves de assinatura (nunca vão para o repositório)
+*.jks
+*.keystore
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
