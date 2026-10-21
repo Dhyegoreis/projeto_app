@@ -67,21 +67,13 @@ fun AgendaMedicoScreen(
             )
         }
 
-        if (uiState.temPacienteAtual) {
-            CardPacienteAtual(
-                horaAtual = uiState.horaAtual,
-                pacienteNome = uiState.pacienteAtualNome,
-                briefing = uiState.briefing,
-                onVerResumo = onVerResumo,
-                onIniciarChamada = onIniciarChamada
-            )
-        } else {
-            Text(
-                "Nenhuma consulta hoje.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = CinzaTexto
-            )
-        }
+        CardPacienteAtual(
+            horaAtual = uiState.horaAtual,
+            pacienteNome = uiState.pacienteAtualNome,
+            briefing = uiState.briefing,
+            onVerResumo = onVerResumo,
+            onIniciarChamada = onIniciarChamada
+        )
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(

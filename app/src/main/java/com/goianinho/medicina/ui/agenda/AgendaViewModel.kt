@@ -31,10 +31,9 @@ data class HorarioUi(
 // Estado da tela Agenda do paciente
 data class AgendaPacienteUiState(
     val medicoNome: String = "[NOME DO MÉDICO]",
-    val temProximaConsulta: Boolean = false,
     val proximaConsultaTipo: String = "Teleconsulta",
-    val proximaConsultaData: String = "",
-    val proximaConsultaHora: String = "",
+    val proximaConsultaData: String = "Qui, 24/09",
+    val proximaConsultaHora: String = "09:30",
     val dias: List<DiaAgenda> = emptyList(),
     val diaSelecionado: String = "",
     val horarios: List<HorarioUi> = emptyList(),
@@ -69,9 +68,8 @@ data class ConsultaProximaUi(
 data class AgendaMedicoUiState(
     val diaRotulo: String = "",
     val totalConsultas: Int = 0,
-    val temPacienteAtual: Boolean = false,
-    val pacienteAtualNome: String = "[PACIENTE]",
-    val horaAtual: String = "",
+    val pacienteAtualNome: String = "[PACIENTE A]",
+    val horaAtual: String = "09:30",
     val briefing: String = "Motivo relatado: [MOTIVO DA CONSULTA]. Aguardando confirmação do resumo.",
     val proximas: List<ConsultaProximaUi> = emptyList()
 )
@@ -153,13 +151,10 @@ class AgendaViewModel : ViewModel() {
     private fun ouvirProximaConsulta() {
         listenerProximaConsulta?.remove()
         listenerProximaConsulta = repository.ouvirProximaConsulta(pacienteId) { consulta ->
-            _uiStatePaciente.update {
-                val dataHora = consulta?.dataHora
-                if (dataHora == null) {
-                    it.copy(temProximaConsulta = false)
-                } else {
+            val dataHora = consulta?.dataHora
+            if (dataHora != null) {
+                _uiStatePaciente.update {
                     it.copy(
-                        temProximaConsulta = true,
                         proximaConsultaData = formatarDiaSemanaEData(dataHora.toDate()),
                         proximaConsultaHora = formatarHora(dataHora.toDate())
                     )
@@ -184,18 +179,20 @@ class AgendaViewModel : ViewModel() {
                     dicaEngajamento = "Dica de engajamento (texto fixo nesta fase)"
                 )
             }
-            _uiStateMedico.update {
-                it.copy(
-                    totalConsultas = ordenadas.size,
-                    temPacienteAtual = atual != null,
-                    pacienteAtualNome = "[PACIENTE]",
-                    horaAtual = atual?.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
-                    proximas = proximas
-                )
+            _uiStateMedico.update { estadoAtual ->
+                if (atual != null) {
+                    estadoAtual.copy(
+                        totalConsultas = ordenadas.size,
+                        pacienteAtualNome = "[PACIENTE]",
+                        horaAtual = atual.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
+                        proximas = proximas
+                    )
+                } else {
+                    estadoAtual.copy(totalConsultas = ordenadas.size, proximas = proximas)
+                }
             }
         }
     }
-
     override fun onCleared() {
         listenerHorarios?.remove()
         listenerProximaConsulta?.remove()

@@ -60,19 +60,11 @@ fun AgendaPacienteScreen(
             color = AzulNoite
         )
 
-        if (uiState.temProximaConsulta) {
-            CardProximaConsulta(
-                medicoNome = uiState.medicoNome,
-                tipoEData = "${uiState.proximaConsultaTipo} · ${uiState.proximaConsultaData} · ${uiState.proximaConsultaHora}",
-                onEntrarNaChamada = onEntrarNaChamada
-            )
-        } else {
-            Text(
-                "Você ainda não tem nenhuma consulta marcada. Escolha um horário abaixo.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = CinzaTexto
-            )
-        }
+        CardProximaConsulta(
+            medicoNome = uiState.medicoNome,
+            tipoEData = "${uiState.proximaConsultaTipo} · ${uiState.proximaConsultaData} · ${uiState.proximaConsultaHora}",
+            onEntrarNaChamada = onEntrarNaChamada
+        )
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
