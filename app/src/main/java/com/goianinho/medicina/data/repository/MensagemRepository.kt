@@ -50,7 +50,12 @@ class MensagemRepository {
             }
     }
 
-    fun enviar(mensagem: Mensagem, perfil: String, onErro: (String) -> Unit = {}) {
+    fun enviar(
+        mensagem: Mensagem,
+        perfil: String,
+        contexto: RespostasSimuladas.Contexto = RespostasSimuladas.Contexto(),
+        onErro: (String) -> Unit = {}
+    ) {
         if (mensagem.texto.isBlank()) return
         // criadaEm nulo: o @ServerTimestamp do modelo faz o servidor preencher a hora
         val usuario = mensagem.copy(id = "", criadaEm = null)
@@ -58,7 +63,7 @@ class MensagemRepository {
             .addOnSuccessListener {
                 if (mensagem.autor == "usuario") {
                     // Gravada só depois da mensagem do usuário, então a hora do servidor é posterior
-                    val r = RespostasSimuladas.gerarResposta(mensagem.texto, perfil)
+                    val r = RespostasSimuladas.gerarResposta(mensagem.texto, perfil, contexto)
                     col.add(
                         usuario.copy(autor = "goianinho", texto = r.texto, fonte = r.fonte)
                     ).addOnFailureListener { Log.e("Goianinho", "mensagens", it) }

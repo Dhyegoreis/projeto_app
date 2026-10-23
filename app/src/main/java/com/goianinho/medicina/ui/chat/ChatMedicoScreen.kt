@@ -51,8 +51,14 @@ fun ChatMedicoScreen(
                 color = VerdeClaro
             )
         }
+        state.bloqueio?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        state.avisoContadores?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         state.erro?.let {
-            AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            AvisoErro(
+                it,
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                onSumir = { viewModel.limparErro() }
+            )
         }
         Row(
             Modifier
@@ -74,7 +80,7 @@ fun ChatMedicoScreen(
             onFonteClick = { onAbrirRevisao() },
             placeholder = "Peça algo ao Goianinho…",
             corEnviar = AzulNoite,
-            enabled = state.perfil.isNotBlank()
+            enabled = state.perfil.isNotBlank() && state.bloqueio == null
         )
     }
 }

@@ -37,6 +37,28 @@ class AuthRepository(
             ?: throw IllegalStateException("Perfil não encontrado")
     }
 
+    // Provisório (demo): lista os pacientes cadastrados para o médico assumir
+    suspend fun listarPacientes(): List<Usuario> {
+        val docs = db.collection("usuarios").whereEqualTo("perfil", "paciente").get().await()
+        return docs.documents
+            .mapNotNull { doc -> doc.toObject(Usuario::class.java)?.copy(uid = doc.id) }
+            .sortedBy { it.nome.lowercase() }
+    }
+
+    // Provisório (demo): o médico assume um paciente sem médico (preenche usuarios/{uid}.medicoId)
+    suspend fun assumirPaciente(pacienteUid: String, medicoId: String) {
+        val ref = db.collection("usuarios").document(pacienteUid)
+        val paciente = ref.get().await().toObject(Usuario::class.java)
+        if (paciente == null || paciente.perfil != "paciente") {
+            throw VinculoException("Paciente não encontrado.")
+        }
+        if (paciente.medicoId == medicoId) throw VinculoException("Esse paciente já é seu.")
+        if (paciente.medicoId.isNotBlank()) {
+            throw VinculoException("Esse paciente já tem outro médico.")
+        }
+        ref.update("medicoId", medicoId).await()
+    }
+
     // RF-05
     suspend fun recuperarSenha(email: String) {
         auth.sendPasswordResetEmail(email).await()
@@ -44,3 +66,6 @@ class AuthRepository(
 
     fun sair() = auth.signOut()
 }
+
+// Erro de regra do vínculo médico-paciente; a mensagem já pode ser mostrada na tela
+class VinculoException(mensagem: String) : Exception(mensagem)

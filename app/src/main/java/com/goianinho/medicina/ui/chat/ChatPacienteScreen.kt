@@ -28,7 +28,7 @@ fun ChatPacienteScreen() {
     val state by viewModel.uiState.collectAsState()
 
     // Com o histórico vazio, uma bolha local de boas-vindas (não é gravada)
-    val mensagens = if (state.mensagens.isEmpty() && state.erro == null &&
+    val mensagens = if (state.mensagens.isEmpty() && state.bloqueio == null &&
         state.nomeUsuario.isNotBlank()) {
         listOf(
             Mensagem(
@@ -61,8 +61,14 @@ fun ChatPacienteScreen() {
                 color = CinzaTexto
             )
         }
+        state.bloqueio?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        state.avisoContadores?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         state.erro?.let {
-            AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            AvisoErro(
+                it,
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                onSumir = { viewModel.limparErro() }
+            )
         }
         ChatConteudo(
             mensagens = mensagens,
@@ -72,7 +78,7 @@ fun ChatPacienteScreen() {
             onFonteClick = null,
             placeholder = "Fale com o Goianinho…",
             corEnviar = VerdePrincipal,
-            enabled = state.perfil.isNotBlank()
+            enabled = state.perfil.isNotBlank() && state.bloqueio == null
         )
     }
 }

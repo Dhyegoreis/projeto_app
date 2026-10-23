@@ -61,8 +61,11 @@ fun AgendaPacienteScreen(
             color = AzulNoite
         )
 
+        uiState.bloqueio?.let { AvisoErro(it) }
+        uiState.avisoProximaConsulta?.let { AvisoErro(it) }
+
         uiState.mensagemErro?.let { erro ->
-            AvisoErro(erro)
+            AvisoErro(erro, onSumir = { viewModel.limparErroPaciente() })
         }
 
         CardProximaConsulta(
@@ -72,65 +75,68 @@ fun AgendaPacienteScreen(
             onEntrarNaChamada = onEntrarNaChamada
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                "Marcar nova consulta",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = AzulNoite
-            )
-            SeletorDeDias(
-                dias = uiState.dias,
-                diaSelecionado = uiState.diaSelecionado,
-                onDiaClick = viewModel::selecionarDia
-            )
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                "Horários disponíveis",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = AzulNoite
-            )
-            if (uiState.horarios.isEmpty()) {
+        // Com bloqueio, só o aviso e o card de próxima consulta aparecem
+        if (uiState.bloqueio == null) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Nenhum horário livre nesse dia.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CinzaTexto
+                    "Marcar nova consulta",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = AzulNoite
                 )
-            } else {
-                GradeDeHorarios(
-                    horarios = uiState.horarios,
-                    horarioSelecionadoId = uiState.horarioSelecionadoId,
-                    onHorarioClick = viewModel::selecionarHorario
+                SeletorDeDias(
+                    dias = uiState.dias,
+                    diaSelecionado = uiState.diaSelecionado,
+                    onDiaClick = viewModel::selecionarDia
                 )
             }
-        }
 
-        val horario = uiState.horarioSelecionado
-        Button(
-            onClick = viewModel::confirmarReserva,
-            enabled = horario != null && !uiState.reservando,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = AzulNoite, contentColor = Branco)
-        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Horários disponíveis",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = AzulNoite
+                )
+                if (uiState.horarios.isEmpty()) {
+                    Text(
+                        "Nenhum horário livre nesse dia.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CinzaTexto
+                    )
+                } else {
+                    GradeDeHorarios(
+                        horarios = uiState.horarios,
+                        horarioSelecionadoId = uiState.horarioSelecionadoId,
+                        onHorarioClick = viewModel::selecionarHorario
+                    )
+                }
+            }
+
+            val horario = uiState.horarioSelecionado
+            Button(
+                onClick = viewModel::confirmarReserva,
+                enabled = horario != null && !uiState.reservando,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AzulNoite, contentColor = Branco)
+            ) {
+                Text(
+                    when {
+                        uiState.reservando -> "Reservando..."
+                        horario != null -> "Confirmar ${uiState.diaSelecionadoRotulo} às ${horario.hora}"
+                        else -> "Escolha um horário"
+                    },
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
             Text(
-                when {
-                    uiState.reservando -> "Reservando..."
-                    horario != null -> "Confirmar ${uiState.diaSelecionadoRotulo} às ${horario.hora}"
-                    else -> "Escolha um horário"
-                },
-                fontWeight = FontWeight.Bold
+                "Prefere falar? Diga ao Goianinho \u201cmarca pra mim na sexta à tarde\u201d na aba Assistente.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = CinzaTexto
             )
         }
-
-        Text(
-            "Prefere falar? Diga ao Goianinho \u201cmarca pra mim na sexta à tarde\u201d na aba Assistente.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = CinzaTexto
-        )
     }
 }
 @Composable

@@ -15,7 +15,8 @@ data class DocumentosUiState(
     val documentos: List<Documento> = emptyList(),
     val carregando: Boolean = true,
     val mensagem: String? = null,
-    val erro: String? = null
+    val bloqueio: String? = null,   // permanente: sessão, perfil, sem médico, erro de listener
+    val erro: String? = null        // passageiro: falha de uma ação do usuário
 )
 
 class DocumentosViewModel(
@@ -37,7 +38,7 @@ class DocumentosViewModel(
         if (uid == null) {
             _uiState.value = _uiState.value.copy(
                 carregando = false,
-                erro = "Sessão expirada. Entre novamente."
+                bloqueio = "Sessão expirada. Entre novamente."
             )
         } else {
             viewModelScope.launch {
@@ -47,14 +48,14 @@ class DocumentosViewModel(
                     medicoId = usuario.medicoId
                     if (medicoId.isBlank()) {
                         _uiState.value = _uiState.value.copy(
-                            erro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta."
+                            bloqueio = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta."
                         )
                     }
                     carregar(pacienteId)
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
                         carregando = false,
-                        erro = "Não foi possível carregar seu perfil."
+                        bloqueio = "Não foi possível carregar seu perfil."
                     )
                 }
             }
@@ -63,7 +64,7 @@ class DocumentosViewModel(
 
     private fun carregar(pacienteId: String) {
         observacao?.remove()
-        observacao = repository.ouvirDoPaciente(pacienteId, onErro = ::mostrarErro) { documentos ->
+        observacao = repository.ouvirDoPaciente(pacienteId, onErro = ::mostrarBloqueio) { documentos ->
             _uiState.value = _uiState.value.copy(
                 documentos = documentos,
                 carregando = false
@@ -102,8 +103,23 @@ class DocumentosViewModel(
         }
     }
 
+    // Erro de listener: a lista fica vazia enquanto o problema existir, então o aviso é fixo
+    private fun mostrarBloqueio(mensagem: String) {
+        _uiState.value = _uiState.value.copy(carregando = false, bloqueio = mensagem)
+    }
+
+    // Falha de uma ação do usuário (registrar documento): aviso passageiro
     private fun mostrarErro(mensagem: String) {
         _uiState.value = _uiState.value.copy(carregando = false, erro = mensagem)
+    }
+
+    // A foto passou do limite de tamanho do documento
+    fun avisarFotoGrande() {
+        mostrarErro("A foto ficou grande demais. Tente de novo com mais luz ou mais perto.")
+    }
+
+    fun limparErro() {
+        _uiState.value = _uiState.value.copy(erro = null)
     }
 
     fun limparMensagem() {

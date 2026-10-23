@@ -79,6 +79,8 @@ fun DocumentosScreen() {
                     tipo = "imagem",
                     base64 = base64
                 )
+            } else {
+                viewModel.avisarFotoGrande()
             }
         }
     }
@@ -99,9 +101,14 @@ fun DocumentosScreen() {
                 style = MaterialTheme.typography.headlineMedium
             )
 
+            state.bloqueio?.let { bloqueio ->
+                Spacer(Modifier.height(8.dp))
+                AvisoErro(bloqueio)
+            }
+
             state.erro?.let { erro ->
                 Spacer(Modifier.height(8.dp))
-                AvisoErro(erro)
+                AvisoErro(erro, onSumir = { viewModel.limparErro() })
             }
 
             Spacer(Modifier.height(8.dp))
@@ -118,14 +125,16 @@ fun DocumentosScreen() {
                         arrayOf("application/pdf", "image/*")
                     )
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.bloqueio == null
             ) {
                 Text("Enviar arquivo PDF ou imagem")
             }
 
             OutlinedButton(
                 onClick = { tirarFoto.launch(null) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.bloqueio == null
             ) {
                 Text("Tirar foto")
             }
@@ -186,25 +195,43 @@ private fun DocumentoCard(documento: Documento) {
                 style = MaterialTheme.typography.titleSmall
             )
 
-            if (documento.resumo.isEmpty()) {
-                Text("Resumo ainda não disponível.")
+            // RN-05: o resumo só vale para o paciente depois da confirmação do médico
+            val liberado = documento.status == StatusDocumento.CONFIRMADO ||
+                documento.status == StatusDocumento.CORRIGIDO
+
+            if (!liberado) {
+                Text(
+                    if (documento.status == StatusDocumento.ARQUIVADO) "Este documento foi arquivado."
+                    else "O resumo fica disponível depois que o médico confirmar."
+                )
             } else {
-                documento.resumo.forEach { ponto ->
-                    Spacer(Modifier.height(8.dp))
-                    Text("• ${ponto.texto}")
+                val temObservacao = documento.observacao.isNotBlank()
+                if (documento.status == StatusDocumento.CORRIGIDO) {
                     Text(
-                        "Fonte: ${ponto.fonte}",
+                        if (temObservacao) "O médico corrigiu este resumo. Leia a observação."
+                        else "O médico corrigiu este resumo.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
+
+                if (documento.resumo.isEmpty()) {
+                    Text("Resumo ainda não disponível.")
+                } else {
+                    documento.resumo.forEach { ponto ->
+                        Spacer(Modifier.height(8.dp))
+                        Text("• ${ponto.texto}")
+                        Text(
+                            "Fonte: ${ponto.fonte}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                if (temObservacao) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Observação do médico: ${documento.observacao}")
+                }
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                "O resumo só vale após confirmação do médico.",
-                style = MaterialTheme.typography.bodySmall
-            )
         }
     }
 }

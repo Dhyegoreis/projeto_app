@@ -8,13 +8,17 @@ import com.goianinho.medicina.data.model.Horario
 import com.goianinho.medicina.data.repository.AgendaRepository
 import com.goianinho.medicina.data.repository.AuthRepository
 import com.goianinho.medicina.data.repository.DocumentoRepository
+import com.goianinho.medicina.ui.comum.consultaDoMomento
+import com.goianinho.medicina.ui.comum.rotuloDaConsulta
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -47,7 +51,9 @@ data class AgendaPacienteUiState(
     val horarios: List<HorarioUi> = emptyList(),
     val horarioSelecionadoId: String? = null,
     val reservando: Boolean = false,
-    val mensagemErro: String? = null
+    val bloqueio: String? = null,       // permanente e esconde a marcação: sessão, perfil, sem médico, erro dos horários
+    val avisoProximaConsulta: String? = null, // permanente, sem esconder a marcação: erro da próxima consulta
+    val mensagemErro: String? = null    // passageiro: falha ao reservar
 ) {
     val horarioSelecionado: HorarioUi?
         get() = horarios.firstOrNull { it.id == horarioSelecionadoId }
@@ -78,9 +84,10 @@ data class AgendaMedicoUiState(
     val totalConsultas: Int = 0,
     val temConsultaAtual: Boolean = false,
     val pacienteAtualNome: String = "",
+    val rotuloAtual: String = "",      // "AGORA" | "PRÓXIMA"
     val horaAtual: String = "",
     val briefing: String = "",
-    val mensagemErro: String? = null,
+    val bloqueio: String? = null,       // permanente: sessão, perfil, erro de listener
     val proximas: List<ConsultaProximaUi> = emptyList()
 )
 
@@ -108,8 +115,11 @@ class AgendaViewModel(
 
     // Dados do médico: últimas consultas do dia, pacientes com resumo pendente e cache de nomes
     private var consultasDoDia: List<Consulta> = emptyList()
+    private var horariosRecebidos: List<Horario> = emptyList()
+    private var diaDosHorarios = ""
     private var pacientesComPendencia: Set<String> = emptySet()
     private val nomesPacientes = mutableMapOf<String, String>()
+    private val canaisPacientes = mutableMapOf<String, String>()
     private val nomesEmBusca = mutableSetOf<String>()
 
     init {
@@ -139,17 +149,28 @@ class AgendaViewModel(
         }
     }
 
+    // Sessão ou perfil: o problema continua valendo, então o aviso é fixo
     private fun definirErro(mensagem: String) {
-        _uiStatePaciente.update { it.copy(mensagemErro = mensagem) }
-        _uiStateMedico.update { it.copy(mensagemErro = mensagem) }
+        _uiStatePaciente.update { it.copy(bloqueio = mensagem) }
+        _uiStateMedico.update { it.copy(bloqueio = mensagem) }
     }
 
+    // Erro do listener de horários: a grade fica vazia enquanto o problema existir, então o aviso é fixo
     private fun erroPaciente(mensagem: String) {
-        _uiStatePaciente.update { it.copy(mensagemErro = mensagem) }
+        _uiStatePaciente.update { it.copy(bloqueio = mensagem) }
+    }
+
+    // Erro do listener de próxima consulta: aviso fixo, mas a marcação continua liberada
+    private fun erroProximaConsulta(mensagem: String) {
+        _uiStatePaciente.update { it.copy(avisoProximaConsulta = mensagem) }
     }
 
     private fun erroMedico(mensagem: String) {
-        _uiStateMedico.update { it.copy(mensagemErro = mensagem) }
+        _uiStateMedico.update { it.copy(bloqueio = mensagem) }
+    }
+
+    fun limparErroPaciente() {
+        _uiStatePaciente.update { it.copy(mensagemErro = null) }
     }
 
     private fun iniciarComoPaciente(uid: String, vinculado: String) {
@@ -157,21 +178,35 @@ class AgendaViewModel(
         medicoId = vinculado
         if (vinculado.isEmpty()) {
             _uiStatePaciente.update {
-                it.copy(mensagemErro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.")
+                it.copy(bloqueio = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.")
             }
             return
         }
-        _uiStatePaciente.update { it.copy(mensagemErro = null) }
+        _uiStatePaciente.update { it.copy(bloqueio = null) }
         ouvirHorariosDoDia(_uiStatePaciente.value.diaSelecionado)
         ouvirProximaConsulta()
         buscarNomeDoMedico(vinculado)
+        // Reaplica o filtro de horários que já passaram sem nova leitura
+        viewModelScope.launch {
+            while (isActive) {
+                delay(INTERVALO_RECALCULO_MS)
+                aplicarHorarios()
+            }
+        }
     }
 
     private fun iniciarComoMedico(uid: String) {
         medicoId = uid
-        _uiStateMedico.update { it.copy(mensagemErro = null) }
+        _uiStateMedico.update { it.copy(bloqueio = null) }
         ouvirPendentes()
         ouvirConsultasDeHoje()
+        // Reavalia AGORA/PRÓXIMA com o passar do tempo, sem nova leitura
+        viewModelScope.launch {
+            while (isActive) {
+                delay(INTERVALO_RECALCULO_MS)
+                atualizarAgendaDoMedico()
+            }
+        }
     }
 
     private fun buscarNomeDoMedico(id: String) {
@@ -235,24 +270,31 @@ class AgendaViewModel(
     private fun ouvirHorariosDoDia(data: String) {
         listenerHorarios?.remove()
         listenerHorarios = repository.ouvirHorariosLivres(medicoId, data, onErro = ::erroPaciente) { horarios ->
-            _uiStatePaciente.update {
-                val agora = System.currentTimeMillis()
-                it.copy(
-                    horarios = horarios
-                        .filter { h ->
-                            // Hoje, esconde os horários que já passaram
-                            val dataHora = horarioParaTimestamp(data, h.hora)
-                            dataHora == null || dataHora.toDate().time >= agora
-                        }
-                        .map { h -> HorarioUi(id = h.id, hora = h.hora) }
-                )
-            }
+            horariosRecebidos = horarios
+            diaDosHorarios = data
+            aplicarHorarios()
+        }
+    }
+
+    // Hoje, esconde os horários que já passaram (reaplicado a cada minuto sobre a última lista)
+    private fun aplicarHorarios() {
+        val agora = System.currentTimeMillis()
+        val data = diaDosHorarios
+        _uiStatePaciente.update {
+            it.copy(
+                horarios = horariosRecebidos
+                    .filter { h ->
+                        val dataHora = horarioParaTimestamp(data, h.hora)
+                        dataHora == null || dataHora.toDate().time >= agora
+                    }
+                    .map { h -> HorarioUi(id = h.id, hora = h.hora) }
+            )
         }
     }
 
     private fun ouvirProximaConsulta() {
         listenerProximaConsulta?.remove()
-        listenerProximaConsulta = repository.ouvirProximaConsulta(pacienteId, onErro = ::erroPaciente) { consulta ->
+        listenerProximaConsulta = repository.ouvirProximaConsulta(pacienteId, onErro = ::erroProximaConsulta) { consulta ->
             val dataHora = consulta?.dataHora
             _uiStatePaciente.update {
                 if (consulta != null && dataHora != null) {
@@ -297,7 +339,9 @@ class AgendaViewModel(
         if (id.isEmpty() || nomesPacientes.containsKey(id) || !nomesEmBusca.add(id)) return
         viewModelScope.launch {
             try {
-                nomesPacientes[id] = auth.buscarUsuario(id).nome
+                val paciente = auth.buscarUsuario(id)
+                canaisPacientes[id] = paciente.canalPreferido
+                nomesPacientes[id] = paciente.nome
                 atualizarAgendaDoMedico()
             } catch (e: CancellationException) {
                 throw e
@@ -309,17 +353,28 @@ class AgendaViewModel(
         }
     }
 
+    // Dica de engajamento (RF-29) a partir do canal preferido do paciente
+    private fun dicaDoCanal(canal: String): String = when (canal) {
+        "whatsapp" -> "Prefere contato pelo WhatsApp."
+        "ligacao" -> "Prefere receber ligação."
+        "app" -> "Prefere falar pelo app."
+        else -> "Confirme com o paciente o melhor canal de contato."
+    }
+
     private fun atualizarAgendaDoMedico() {
-        val ordenadas = consultasDoDia
-        val atual = ordenadas.firstOrNull()
-        val proximas = ordenadas.drop(1).map { consulta ->
+        // Canceladas não contam; "atual" é a primeira que ainda não terminou (30 min)
+        val ordenadas = consultasDoDia.filter { it.status != "cancelada" }
+        val agora = Date()
+        val atual = consultaDoMomento(ordenadas, agora)
+        val restantes = if (atual != null) ordenadas.dropWhile { it !== atual }.drop(1) else emptyList()
+        val proximas = restantes.map { consulta ->
             val pendente = consulta.pacienteId in pacientesComPendencia
             ConsultaProximaUi(
                 hora = consulta.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
                 pacienteNome = nomesPacientes[consulta.pacienteId].orEmpty(),
                 status = if (pendente) StatusResumoConsulta.AGUARDANDO_MEDICO
                 else StatusResumoConsulta.SEM_EXAME,
-                dicaEngajamento = "Dica de engajamento (texto fixo nesta fase)"
+                dicaEngajamento = dicaDoCanal(canaisPacientes[consulta.pacienteId].orEmpty())
             )
         }
         _uiStateMedico.update { estadoAtual ->
@@ -328,6 +383,7 @@ class AgendaViewModel(
                 estadoAtual.copy(
                     totalConsultas = ordenadas.size,
                     temConsultaAtual = true,
+                    rotuloAtual = rotuloDaConsulta(atual, agora),
                     pacienteAtualNome = nomesPacientes[atual.pacienteId].orEmpty(),
                     horaAtual = atual.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
                     briefing = if (pendente) "Resumo de exames aguardando sua confirmação."
@@ -336,9 +392,10 @@ class AgendaViewModel(
                 )
             } else {
                 estadoAtual.copy(
-                    totalConsultas = 0,
+                    totalConsultas = ordenadas.size,
                     temConsultaAtual = false,
                     pacienteAtualNome = "",
+                    rotuloAtual = "",
                     horaAtual = "",
                     briefing = "",
                     proximas = emptyList()
@@ -357,6 +414,8 @@ class AgendaViewModel(
 }
 
 // --- Funções de data/hora (privadas ao arquivo) ---
+
+private const val INTERVALO_RECALCULO_MS = 60_000L
 
 private val NOMES_DIA_SEMANA = mapOf(
     Calendar.SUNDAY to "Dom", Calendar.MONDAY to "Seg", Calendar.TUESDAY to "Ter",

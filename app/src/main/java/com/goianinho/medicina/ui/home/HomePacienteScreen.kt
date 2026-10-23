@@ -86,7 +86,7 @@ fun HomePacienteScreen(
             }) { Text("Sair", color = VerdePrincipal) }
         }
 
-        state.erro?.let { AvisoErro(it) }
+        state.bloqueio?.let { AvisoErro(it) }
 
         // Card do Goianinho
         Card(
@@ -118,7 +118,7 @@ fun HomePacienteScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Fale ou escreva para o Goianinho…",
+                            "Escreva para o Goianinho…",
                             modifier = Modifier.weight(1f),
                             color = CinzaTexto
                         )
@@ -127,8 +127,8 @@ fun HomePacienteScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                painterResource(R.drawable.ic_mic),
-                                contentDescription = "Falar com o Goianinho",
+                                painterResource(R.drawable.ic_chat),
+                                contentDescription = "Abrir o chat",
                                 tint = Branco
                             )
                         }
@@ -282,7 +282,7 @@ private fun ItemDocumento(doc: Documento, onClick: () -> Unit) {
 }
 
 private fun rotuloDoStatus(status: String): String = when (status) {
-    StatusDocumento.AGUARDANDO_MEDICO -> "Resumo pronto · aguardando o médico"
+    StatusDocumento.AGUARDANDO_MEDICO -> "Aguardando revisão do médico"
     StatusDocumento.CONFIRMADO -> "Confirmado pelo médico"
     StatusDocumento.CORRIGIDO -> "Corrigido pelo médico"
     StatusDocumento.ARQUIVADO -> "Arquivado"

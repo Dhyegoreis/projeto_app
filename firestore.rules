@@ -1,0 +1,137 @@
+rules_version = '2';
+
+// Regras do Firestore do Goianinho Medicina (projeto goianinho-1cc1f).
+// Publicar pelo console: Firestore → Regras → colar este arquivo → Publicar.
+// Cada regra cobre exatamente as leituras e gravações que o app faz (ver data/repository/).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    function eu() {
+      return request.auth.uid;
+    }
+
+    function meuPerfil() {
+      return get(/databases/$(database)/documents/usuarios/$(eu())).data;
+    }
+
+    function souMedico() {
+      return logado() && meuPerfil().perfil == "medico";
+    }
+
+    // Só estes campos mudaram entre o documento atual e o novo
+    function soMudou(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
+    }
+
+    // ---------- usuarios (Módulo 1): id do documento = uid ----------
+    match /usuarios/{uid} {
+      // Paciente lê o nome do médico; médico lê os nomes e a lista de pacientes (Assumir paciente)
+      allow read: if logado();
+
+      // Cadastro: cada um cria só o próprio perfil, sem médico vinculado
+      allow create: if logado() && eu() == uid
+        && request.resource.data.perfil in ["paciente", "medico"]
+        && request.resource.data.get("medicoId", "") == "";
+
+      // O próprio usuário edita o perfil, mas não troca de perfil nem de médico.
+      // "Assumir paciente" (provisório): o médico só preenche o medicoId de um paciente sem médico, com o próprio uid
+      allow update: if (
+          logado() && eu() == uid
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["perfil", "medicoId"])
+        ) || (
+          souMedico()
+          && resource.data.perfil == "paciente"
+          && resource.data.get("medicoId", "") == ""
+          && request.resource.data.medicoId == eu()
+          && soMudou(["medicoId"])
+        );
+
+      allow delete: if false;
+    }
+
+    // ---------- mensagens (Módulo 2) ----------
+    match /mensagens/{id} {
+      // Paciente: a própria conversa. Médico: só a conversa dele com o Goianinho (pacienteId vazio)
+      allow read: if logado() && (
+        resource.data.pacienteId == eu()
+        || (resource.data.medicoId == eu() && resource.data.pacienteId == "")
+      );
+
+      // A mensagem do usuário e a resposta simulada são gravadas pelo próprio app
+      allow create: if logado()
+        && request.resource.data.autor in ["usuario", "goianinho"]
+        && (
+          (request.resource.data.pacienteId == eu()
+            && request.resource.data.medicoId == meuPerfil().medicoId
+            && request.resource.data.medicoId != "")
+          || (souMedico()
+            && request.resource.data.medicoId == eu()
+            && request.resource.data.pacienteId == "")
+        );
+
+      allow update, delete: if false;
+    }
+
+    // ---------- documentos (Módulo 3) ----------
+    match /documentos/{id} {
+      // RN-07: o médico só vê documentos dos pacientes vinculados a ele
+      allow read: if logado() && (
+        resource.data.pacienteId == eu() || resource.data.medicoId == eu()
+      );
+
+      // O paciente registra para o próprio médico, sempre aguardando revisão
+      allow create: if logado()
+        && request.resource.data.pacienteId == eu()
+        && request.resource.data.medicoId == meuPerfil().medicoId
+        && request.resource.data.medicoId != ""
+        && request.resource.data.status == "aguardando_medico";
+
+      // RF-21/RF-22 e RN-06: só o médico do documento confirma ou corrige
+      allow update: if souMedico()
+        && resource.data.medicoId == eu()
+        && request.resource.data.confirmadoPor == eu()
+        && request.resource.data.status in ["confirmado", "corrigido"]
+        && soMudou(["status", "observacao", "confirmadoPor", "confirmadoEm", "apoioIA"]);
+
+      allow delete: if false;
+    }
+
+    // ---------- horarios (Módulo 4): cadastrados no console (RN-09) ----------
+    match /horarios/{id} {
+      allow read: if logado();
+
+      // O médico mantém os próprios horários
+      allow create: if souMedico() && request.resource.data.medicoId == eu();
+      allow delete: if souMedico() && resource.data.medicoId == eu();
+
+      // O médico edita os próprios horários.
+      // RN-08: o paciente só ocupa um horário livre (true → false), dentro da transação da reserva
+      allow update: if (souMedico() && resource.data.medicoId == eu())
+        || (
+          logado()
+          && resource.data.livre == true
+          && request.resource.data.livre == false
+          && soMudou(["livre"])
+        );
+    }
+
+    // ---------- consultas (Módulo 4) ----------
+    match /consultas/{id} {
+      allow read: if logado() && (
+        resource.data.pacienteId == eu() || resource.data.medicoId == eu()
+      );
+
+      // O paciente marca só para si e só com o próprio médico
+      allow create: if logado()
+        && request.resource.data.pacienteId == eu()
+        && request.resource.data.medicoId == meuPerfil().medicoId
+        && request.resource.data.medicoId != "";
+
+      allow update, delete: if false;
+    }
+  }
+}

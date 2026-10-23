@@ -9,17 +9,22 @@ import com.goianinho.medicina.data.repository.AgendaRepository
 import com.goianinho.medicina.data.repository.AuthRepository
 import com.goianinho.medicina.data.repository.DocumentoRepository
 import com.goianinho.medicina.data.repository.RespostasSimuladas
+import com.goianinho.medicina.ui.comum.consultaDoMomento
+import com.goianinho.medicina.ui.comum.rotuloDaConsulta
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 // Estado das duas telas de Início (paciente e médico). O Início só lê (RN-10).
@@ -35,8 +40,9 @@ data class HomeUiState(
     val pendentes: List<Documento> = emptyList(),
     val semResposta: Int = RespostasSimuladas.PACIENTES_SEM_RESPOSTA,
     val proximaDoDia: Consulta? = null,
+    val rotuloProximaDoDia: String = "PRÓXIMA",   // "AGORA" | "PRÓXIMA"
     val nomesPacientes: Map<String, String> = emptyMap(),
-    val erro: String? = null
+    val bloqueio: String? = null        // permanente: sessão, perfil, erro de listener (o Início não tem erro de ação)
 )
 
 class HomeViewModel(
@@ -53,30 +59,32 @@ class HomeViewModel(
     private var listenerPendentes: ListenerRegistration? = null
     private var listenerConsultasDia: ListenerRegistration? = null
 
+    private var consultasRecebidas: List<Consulta> = emptyList()
+
     private val nomesPacientes = mutableMapOf<String, String>()
     private val nomesEmBusca = mutableSetOf<String>()
 
     init {
         val logado = auth.usuarioLogadoUid
         if (logado.isNullOrBlank()) {
-            _uiState.update { it.copy(erro = "Sessão expirada. Entre novamente.") }
+            _uiState.update { it.copy(bloqueio = "Sessão expirada. Entre novamente.") }
         } else {
             viewModelScope.launch {
                 try {
                     val usuario = auth.buscarUsuario(logado)
                     _uiState.update {
-                        it.copy(perfil = usuario.perfil, nome = usuario.nome, erro = null)
+                        it.copy(perfil = usuario.perfil, nome = usuario.nome, bloqueio = null)
                     }
                     when (usuario.perfil) {
                         "medico" -> iniciarComoMedico(logado)
                         "paciente" -> iniciarComoPaciente(logado, usuario.medicoId)
-                        else -> _uiState.update { it.copy(erro = "Perfil de usuário inválido.") }
+                        else -> _uiState.update { it.copy(bloqueio = "Perfil de usuário inválido.") }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Log.e("Goianinho", "Início: falha ao buscar o perfil", e)
-                    _uiState.update { it.copy(erro = "Não foi possível carregar seu perfil.") }
+                    _uiState.update { it.copy(bloqueio = "Não foi possível carregar seu perfil.") }
                 }
             }
         }
@@ -116,13 +124,29 @@ class HomeViewModel(
         listenerConsultasDia = agendaRepo.ouvirConsultasDoDia(
             uid, inicioDoDia(0), inicioDoDia(1), onErro = ::mostrarErro
         ) { todas ->
-            val lista = todas.filter { it.status != "cancelada" }
-            val agora = Timestamp.now()
-            val proxima = lista.firstOrNull { c -> c.dataHora != null && c.dataHora >= agora }
-            _uiState.update {
-                it.copy(consultasHoje = lista, proximaDoDia = proxima)
+            consultasRecebidas = todas
+            recalcularConsultaDoDia()
+            todas.filter { it.status != "cancelada" }.forEach { buscarNomePaciente(it.pacienteId) }
+        }
+        // Reavalia AGORA/PRÓXIMA com o passar do tempo, sem nova leitura
+        viewModelScope.launch {
+            while (isActive) {
+                delay(60_000L)
+                recalcularConsultaDoDia()
             }
-            lista.forEach { buscarNomePaciente(it.pacienteId) }
+        }
+    }
+
+    private fun recalcularConsultaDoDia() {
+        val lista = consultasRecebidas.filter { it.status != "cancelada" }
+        val agora = Date()
+        val proxima = consultaDoMomento(lista, agora)
+        _uiState.update {
+            it.copy(
+                consultasHoje = lista,
+                proximaDoDia = proxima,
+                rotuloProximaDoDia = proxima?.let { c -> rotuloDaConsulta(c, agora) } ?: "PRÓXIMA"
+            )
         }
     }
 
@@ -145,7 +169,7 @@ class HomeViewModel(
     }
 
     private fun mostrarErro(mensagem: String) {
-        _uiState.update { it.copy(erro = mensagem) }
+        _uiState.update { it.copy(bloqueio = mensagem) }
     }
 
     private fun inicioDoDia(diasAFrente: Int): Timestamp {

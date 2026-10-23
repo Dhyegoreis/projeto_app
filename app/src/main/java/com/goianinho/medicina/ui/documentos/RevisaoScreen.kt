@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goianinho.medicina.data.model.Documento
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @Composable
 fun RevisaoScreen() {
@@ -47,9 +49,14 @@ fun RevisaoScreen() {
                 style = MaterialTheme.typography.headlineMedium
             )
 
-            state.erro?.let {
+            state.bloqueio?.let {
                 Spacer(Modifier.height(8.dp))
                 AvisoErro(it)
+            }
+
+            state.erro?.let {
+                Spacer(Modifier.height(8.dp))
+                AvisoErro(it, onSumir = { viewModel.limparErro() })
             }
 
             Spacer(Modifier.height(8.dp))
@@ -79,6 +86,7 @@ fun RevisaoScreen() {
                         ) { documento ->
                             RevisaoCard(
                                 documento = documento,
+                                pacienteNome = state.nomesPacientes[documento.pacienteId].orEmpty(),
                                 observacao = observacoes[documento.id].orEmpty(),
                                 onObservacaoChange = {
                                     observacoes[documento.id] = it
@@ -107,6 +115,7 @@ fun RevisaoScreen() {
 @Composable
 private fun RevisaoCard(
     documento: Documento,
+    pacienteNome: String,
     observacao: String,
     onObservacaoChange: (String) -> Unit,
     onConfirmar: () -> Unit,
@@ -121,6 +130,14 @@ private fun RevisaoCard(
                 documento.nome,
                 style = MaterialTheme.typography.titleMedium
             )
+
+            Text("Paciente: ${pacienteNome.ifEmpty { "…" }}")
+            documento.enviadoEm?.toDate()?.let { data ->
+                Text(
+                    "Enviado em ${SimpleDateFormat("dd/MM 'às' HH:mm", Locale("pt", "BR")).format(data)}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
             Text("Status: aguardando médico")
 

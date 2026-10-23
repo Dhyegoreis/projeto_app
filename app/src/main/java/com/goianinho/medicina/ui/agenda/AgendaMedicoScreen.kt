@@ -68,12 +68,11 @@ fun AgendaMedicoScreen(
             )
         }
 
-        uiState.mensagemErro?.let { erro ->
-            AvisoErro(erro)
-        }
+        uiState.bloqueio?.let { AvisoErro(it) }
 
         if (uiState.temConsultaAtual) {
             CardPacienteAtual(
+                rotulo = uiState.rotuloAtual,
                 horaAtual = uiState.horaAtual,
                 pacienteNome = uiState.pacienteAtualNome,
                 briefing = uiState.briefing,
@@ -82,7 +81,7 @@ fun AgendaMedicoScreen(
             )
         } else {
             Text(
-                "Nenhuma consulta hoje.",
+                if (uiState.totalConsultas > 0) "Nenhuma consulta restante hoje." else "Nenhuma consulta hoje.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = CinzaTexto
             )
@@ -112,6 +111,7 @@ fun AgendaMedicoScreen(
 }
 @Composable
 private fun CardPacienteAtual(
+    rotulo: String,
     horaAtual: String,
     pacienteNome: String,
     briefing: String,
@@ -125,7 +125,7 @@ private fun CardPacienteAtual(
     ) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                "AGORA · $horaAtual",
+                "$rotulo · $horaAtual",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
