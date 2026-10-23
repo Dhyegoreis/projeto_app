@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goianinho.medicina.data.model.Documento
+import com.goianinho.medicina.data.model.StatusDocumento
 
 @Composable
 fun DocumentosScreen() {
@@ -178,7 +179,7 @@ private fun DocumentoCard(documento: Documento) {
             )
 
             Text("Tipo: ${documento.tipo.uppercase()}")
-            Text("Status: ${documento.status.replace('_', ' ')}")
+            Text("Status: ${rotuloDoStatus(documento.status)}")
 
             Spacer(Modifier.height(12.dp))
 
@@ -221,4 +222,12 @@ private fun nomeDoArquivo(context: Context, uri: Uri): String {
             null
         }
     } ?: "documento"
+}
+
+private fun rotuloDoStatus(status: String): String = when (status) {
+    StatusDocumento.AGUARDANDO_MEDICO -> "Aguardando médico"
+    StatusDocumento.CONFIRMADO -> "Confirmado pelo médico"
+    StatusDocumento.CORRIGIDO -> "Corrigido pelo médico"
+    StatusDocumento.ARQUIVADO -> "Arquivado"
+    else -> status.replace('_', ' ')
 }

@@ -199,6 +199,10 @@ class AgendaViewModel(
         val estado = _uiStatePaciente.value
         val horarioSelecionado = estado.horarioSelecionado ?: return
         val dataHora = horarioParaTimestamp(estado.diaSelecionado, horarioSelecionado.hora) ?: return
+        if (dataHora.toDate().time < System.currentTimeMillis()) {
+            _uiStatePaciente.update { it.copy(mensagemErro = "Esse horário já passou.") }
+            return
+        }
 
         _uiStatePaciente.update { it.copy(reservando = true, mensagemErro = null) }
 
@@ -224,7 +228,16 @@ class AgendaViewModel(
         listenerHorarios?.remove()
         listenerHorarios = repository.ouvirHorariosLivres(medicoId, data) { horarios ->
             _uiStatePaciente.update {
-                it.copy(horarios = horarios.map { h -> HorarioUi(id = h.id, hora = h.hora) })
+                val agora = System.currentTimeMillis()
+                it.copy(
+                    horarios = horarios
+                        .filter { h ->
+                            // Hoje, esconde os horários que já passaram
+                            val dataHora = horarioParaTimestamp(data, h.hora)
+                            dataHora == null || dataHora.toDate().time >= agora
+                        }
+                        .map { h -> HorarioUi(id = h.id, hora = h.hora) }
+                )
             }
         }
     }

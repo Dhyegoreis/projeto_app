@@ -77,7 +77,8 @@ fun ChatMedicoScreen(
             onEnviar = { viewModel.enviar(it) },
             onFonteClick = { onAbrirRevisao() },
             placeholder = "Peça algo ao Goianinho…",
-            corEnviar = AzulNoite
+            corEnviar = AzulNoite,
+            enabled = state.perfil.isNotBlank()
         )
     }
 }

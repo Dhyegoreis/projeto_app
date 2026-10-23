@@ -26,14 +26,14 @@ fun ChatPacienteScreen() {
     val viewModel: ChatViewModel = viewModel()
     val state by viewModel.uiState.collectAsState()
 
-    val medico = state.nomeMedico.ifEmpty { "seu médico" }
     // Com o histórico vazio, uma bolha local de boas-vindas (não é gravada)
-    val mensagens = if (state.mensagens.isEmpty() && state.erro == null) {
+    val mensagens = if (state.mensagens.isEmpty() && state.erro == null &&
+        state.nomeUsuario.isNotBlank()) {
         listOf(
             Mensagem(
                 id = "boas-vindas",
                 autor = "goianinho",
-                texto = "Olá, ${state.nomeUsuario}. Sou o Goianinho, assistente do Dr. $medico. " +
+                texto = "Olá, ${state.nomeUsuario}. Sou o Goianinho, ${if (state.nomeMedico.isNotEmpty()) "assistente do Dr. ${state.nomeMedico}" else "seu assistente"}. " +
                     "Posso marcar consultas, organizar seus exames e levar tudo pronto para ele."
             )
         )
@@ -55,7 +55,7 @@ fun ChatPacienteScreen() {
                 color = AzulNoite
             )
             Text(
-                "Assistente do Dr. $medico",
+                if (state.nomeMedico.isNotEmpty()) "Assistente do Dr. ${state.nomeMedico}" else "Goianinho · seu assistente",
                 style = MaterialTheme.typography.bodyMedium,
                 color = CinzaTexto
             )
@@ -75,7 +75,8 @@ fun ChatPacienteScreen() {
             onEnviar = { viewModel.enviar(it) },
             onFonteClick = null,
             placeholder = "Fale com o Goianinho…",
-            corEnviar = VerdePrincipal
+            corEnviar = VerdePrincipal,
+            enabled = state.perfil.isNotBlank()
         )
     }
 }

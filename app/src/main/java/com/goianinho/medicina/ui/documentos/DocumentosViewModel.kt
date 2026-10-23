@@ -45,6 +45,11 @@ class DocumentosViewModel(
                     val usuario = auth.buscarUsuario(uid)
                     pacienteId = uid
                     medicoId = usuario.medicoId
+                    if (medicoId.isBlank()) {
+                        _uiState.value = _uiState.value.copy(
+                            erro = "Você ainda não tem um médico vinculado."
+                        )
+                    }
                     carregar(pacienteId)
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(

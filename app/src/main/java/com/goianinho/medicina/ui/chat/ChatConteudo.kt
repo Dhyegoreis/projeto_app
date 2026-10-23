@@ -49,7 +49,8 @@ fun ChatConteudo(
     onFonteClick: ((String) -> Unit)?,
     placeholder: String,
     corEnviar: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     var texto by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -80,6 +81,7 @@ fun ChatConteudo(
             items(chips) { chip ->
                 SuggestionChip(
                     onClick = { onChip(chip) },
+                    enabled = enabled,
                     label = { Text(chip, fontWeight = FontWeight.Bold) },
                     shape = RoundedCornerShape(20.dp),
                     colors = SuggestionChipDefaults.suggestionChipColors(
@@ -114,7 +116,7 @@ fun ChatConteudo(
                         texto = ""
                     }
                 },
-                enabled = texto.isNotBlank(),
+                enabled = enabled && texto.isNotBlank(),
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = corEnviar)
             ) {
                 Icon(
