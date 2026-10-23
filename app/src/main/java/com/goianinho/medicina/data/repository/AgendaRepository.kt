@@ -15,12 +15,17 @@ import com.google.firebase.firestore.firestore
  */
 class AgendaRepository {
 
+    private companion object {
+        const val MSG_HORARIO_OCUPADO = "Horário já reservado"
+    }
+
     private val db = Firebase.firestore
 
     // RF-24: horários livres do médico, num dia específico
     fun ouvirHorariosLivres(
         medicoId: String,
         data: String,
+        onErro: (String) -> Unit = {},
         onMudou: (List<Horario>) -> Unit
     ): ListenerRegistration =
         db.collection("horarios")
@@ -31,6 +36,7 @@ class AgendaRepository {
                 if (erro != null) {
                     Log.e("Goianinho", "ouvirHorariosLivres falhou", erro)
                     onMudou(emptyList())
+                    onErro(traduzirErroFirestore(erro))
                     return@addSnapshotListener
                 }
                 onMudou(snap?.toObjects(Horario::class.java).orEmpty().sortedBy { it.hora })
@@ -66,7 +72,16 @@ class AgendaRepository {
             )
         }
             .addOnSuccessListener { onSucesso() }
-            .addOnFailureListener { onErro("Esse horário acabou de ser reservado. Escolha outro.") }
+            .addOnFailureListener { e ->
+                Log.e("Goianinho", "reservar falhou", e)
+                val conflito = generateSequence(e as Throwable?) { it.cause }
+                    .filterIsInstance<FirebaseFirestoreException>()
+                    .firstOrNull()?.message == MSG_HORARIO_OCUPADO
+                onErro(
+                    if (conflito) "Esse horário acabou de ser reservado. Escolha outro."
+                    else traduzirErroFirestore(e)
+                )
+            }
     }
 
     // RF-27 e RF-28: consultas do dia do médico, em ordem de horário
@@ -74,6 +89,7 @@ class AgendaRepository {
         medicoId: String,
         inicio: Timestamp,
         fim: Timestamp,
+        onErro: (String) -> Unit = {},
         onMudou: (List<Consulta>) -> Unit
     ): ListenerRegistration =
         db.collection("consultas")
@@ -85,6 +101,7 @@ class AgendaRepository {
                 if (erro != null) {
                     Log.e("Goianinho", "ouvirConsultasDoDia falhou", erro)
                     onMudou(emptyList())
+                    onErro(traduzirErroFirestore(erro))
                     return@addSnapshotListener
                 }
                 onMudou(snap?.toObjects(Consulta::class.java).orEmpty())
@@ -93,6 +110,7 @@ class AgendaRepository {
     // RF-26: próxima consulta do paciente — também usada pelo Início (Módulo 1)
     fun ouvirProximaConsulta(
         pacienteId: String,
+        onErro: (String) -> Unit = {},
         onMudou: (Consulta?) -> Unit
     ): ListenerRegistration =
         db.collection("consultas")
@@ -104,6 +122,7 @@ class AgendaRepository {
                 if (erro != null) {
                     Log.e("Goianinho", "ouvirProximaConsulta falhou", erro)
                     onMudou(null)
+                    onErro(traduzirErroFirestore(erro))
                     return@addSnapshotListener
                 }
                 onMudou(snap?.toObjects(Consulta::class.java)?.firstOrNull())

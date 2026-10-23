@@ -144,12 +144,20 @@ class AgendaViewModel(
         _uiStateMedico.update { it.copy(mensagemErro = mensagem) }
     }
 
+    private fun erroPaciente(mensagem: String) {
+        _uiStatePaciente.update { it.copy(mensagemErro = mensagem) }
+    }
+
+    private fun erroMedico(mensagem: String) {
+        _uiStateMedico.update { it.copy(mensagemErro = mensagem) }
+    }
+
     private fun iniciarComoPaciente(uid: String, vinculado: String) {
         pacienteId = uid
         medicoId = vinculado
         if (vinculado.isEmpty()) {
             _uiStatePaciente.update {
-                it.copy(mensagemErro = "Você ainda não tem um médico vinculado.")
+                it.copy(mensagemErro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.")
             }
             return
         }
@@ -192,7 +200,7 @@ class AgendaViewModel(
     fun confirmarReserva() {
         if (pacienteId.isEmpty() || medicoId.isEmpty()) {
             _uiStatePaciente.update {
-                it.copy(mensagemErro = "Você ainda não tem um médico vinculado.")
+                it.copy(mensagemErro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.")
             }
             return
         }
@@ -226,7 +234,7 @@ class AgendaViewModel(
 
     private fun ouvirHorariosDoDia(data: String) {
         listenerHorarios?.remove()
-        listenerHorarios = repository.ouvirHorariosLivres(medicoId, data) { horarios ->
+        listenerHorarios = repository.ouvirHorariosLivres(medicoId, data, onErro = ::erroPaciente) { horarios ->
             _uiStatePaciente.update {
                 val agora = System.currentTimeMillis()
                 it.copy(
@@ -244,7 +252,7 @@ class AgendaViewModel(
 
     private fun ouvirProximaConsulta() {
         listenerProximaConsulta?.remove()
-        listenerProximaConsulta = repository.ouvirProximaConsulta(pacienteId) { consulta ->
+        listenerProximaConsulta = repository.ouvirProximaConsulta(pacienteId, onErro = ::erroPaciente) { consulta ->
             val dataHora = consulta?.dataHora
             _uiStatePaciente.update {
                 if (consulta != null && dataHora != null) {
@@ -268,7 +276,7 @@ class AgendaViewModel(
 
     private fun ouvirPendentes() {
         listenerPendentes?.remove()
-        listenerPendentes = documentoRepository.ouvirPendentes(medicoId) { documentos ->
+        listenerPendentes = documentoRepository.ouvirPendentes(medicoId, onErro = ::erroMedico) { documentos ->
             pacientesComPendencia = documentos.map { it.pacienteId }.toSet()
             atualizarAgendaDoMedico()
         }
@@ -277,7 +285,7 @@ class AgendaViewModel(
     private fun ouvirConsultasDeHoje() {
         val (inicio, fim) = intervaloDeHoje()
         listenerConsultasDoDia?.remove()
-        listenerConsultasDoDia = repository.ouvirConsultasDoDia(medicoId, inicio, fim) { consultas ->
+        listenerConsultasDoDia = repository.ouvirConsultasDoDia(medicoId, inicio, fim, onErro = ::erroMedico) { consultas ->
             consultasDoDia = consultas.sortedBy { it.dataHora?.seconds ?: Long.MAX_VALUE }
             consultasDoDia.map { it.pacienteId }.distinct().forEach(::buscarNomeDoPaciente)
             atualizarAgendaDoMedico()

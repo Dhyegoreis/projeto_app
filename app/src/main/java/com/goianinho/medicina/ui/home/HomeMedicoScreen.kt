@@ -1,5 +1,6 @@
 package com.goianinho.medicina.ui.home
 
+import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -83,7 +84,7 @@ fun HomeMedicoScreen(
             }) { Text("Sair", color = VerdePrincipal) }
         }
 
-        state.erro?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.erro?.let { AvisoErro(it) }
 
         // Contadores
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

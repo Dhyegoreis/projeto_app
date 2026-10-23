@@ -1,6 +1,7 @@
 
 package com.goianinho.medicina.ui.documentos
 
+import com.goianinho.medicina.ui.comum.AvisoErro
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -98,6 +99,11 @@ fun DocumentosScreen() {
                 style = MaterialTheme.typography.headlineMedium
             )
 
+            state.erro?.let { erro ->
+                Spacer(Modifier.height(8.dp))
+                AvisoErro(erro)
+            }
+
             Spacer(Modifier.height(8.dp))
 
             Text(
@@ -122,14 +128,6 @@ fun DocumentosScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Tirar foto")
-            }
-
-            state.erro?.let { erro ->
-                Text(
-                    text = erro,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
             }
 
             state.mensagem?.let { mensagem ->

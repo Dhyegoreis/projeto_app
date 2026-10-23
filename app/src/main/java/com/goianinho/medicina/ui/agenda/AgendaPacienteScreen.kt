@@ -1,5 +1,6 @@
 package com.goianinho.medicina.ui.agenda
 
+import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,6 +61,10 @@ fun AgendaPacienteScreen(
             color = AzulNoite
         )
 
+        uiState.mensagemErro?.let { erro ->
+            AvisoErro(erro)
+        }
+
         CardProximaConsulta(
             medicoNome = uiState.medicoNome,
             temProximaConsulta = uiState.temProximaConsulta,
@@ -119,10 +124,6 @@ fun AgendaPacienteScreen(
                 },
                 fontWeight = FontWeight.Bold
             )
-        }
-
-        uiState.mensagemErro?.let { erro ->
-            Text(erro, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
 
         Text(

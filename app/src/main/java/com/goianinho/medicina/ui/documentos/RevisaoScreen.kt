@@ -1,6 +1,7 @@
 
 package com.goianinho.medicina.ui.documentos
 
+import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -46,13 +47,13 @@ fun RevisaoScreen() {
                 style = MaterialTheme.typography.headlineMedium
             )
 
-            Spacer(Modifier.height(8.dp))
-            Text("Confira os resumos pendentes antes de confirmar.")
-
             state.erro?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
+                AvisoErro(it)
             }
+
+            Spacer(Modifier.height(8.dp))
+            Text("Confira os resumos pendentes antes de confirmar.")
 
             state.mensagem?.let {
                 Spacer(Modifier.height(8.dp))

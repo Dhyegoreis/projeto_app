@@ -78,12 +78,12 @@ class ChatViewModel(
     private fun iniciarComoPaciente(uid: String, medicoId: String) {
         medicoIdDoPaciente = medicoId
         if (medicoId.isBlank()) {
-            _uiState.update { it.copy(erro = "Você ainda não tem um médico vinculado.") }
+            _uiState.update { it.copy(erro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.") }
             return
         }
         listenerMensagens?.remove()
-        listenerMensagens = repo.ouvirDoPaciente(uid) { lista ->
-            _uiState.update { it.copy(mensagens = lista, erro = null) }
+        listenerMensagens = repo.ouvirDoPaciente(uid, onErro = ::mostrarErro) { lista ->
+            _uiState.update { it.copy(mensagens = lista) }
         }
         viewModelScope.launch {
             try {
@@ -100,19 +100,23 @@ class ChatViewModel(
 
     private fun iniciarComoMedico(uid: String) {
         listenerMensagens?.remove()
-        listenerMensagens = repo.ouvirDoMedico(uid) { lista ->
-            _uiState.update { it.copy(mensagens = lista, erro = null) }
+        listenerMensagens = repo.ouvirDoMedico(uid, onErro = ::mostrarErro) { lista ->
+            _uiState.update { it.copy(mensagens = lista) }
         }
         listenerPendentes?.remove()
-        listenerPendentes = documentoRepo.ouvirPendentes(uid) { lista ->
+        listenerPendentes = documentoRepo.ouvirPendentes(uid, onErro = ::mostrarErro) { lista ->
             _uiState.update { it.copy(paraRevisar = lista.size) }
         }
         val inicio = inicioDoDia(0)
         val fim = inicioDoDia(1)
         listenerConsultas?.remove()
-        listenerConsultas = agendaRepo.ouvirConsultasDoDia(uid, inicio, fim) { lista ->
+        listenerConsultas = agendaRepo.ouvirConsultasDoDia(uid, inicio, fim, onErro = ::mostrarErro) { lista ->
             _uiState.update { it.copy(consultasHoje = lista.size) }
         }
+    }
+
+    private fun mostrarErro(mensagem: String) {
+        _uiState.update { it.copy(erro = mensagem) }
     }
 
     private fun inicioDoDia(diasAFrente: Int): Timestamp {
@@ -135,7 +139,7 @@ class ChatViewModel(
         } else {
             if (estado.perfil != "paciente") return
             if (medicoIdDoPaciente.isBlank()) {
-                _uiState.update { it.copy(erro = "Você ainda não tem um médico vinculado.") }
+                _uiState.update { it.copy(erro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.") }
                 return
             }
             Mensagem(
@@ -145,7 +149,7 @@ class ChatViewModel(
                 texto = texto.trim()
             )
         }
-        repo.enviar(mensagem, estado.perfil)
+        repo.enviar(mensagem, estado.perfil, onErro = ::mostrarErro)
     }
 
     override fun onCleared() {

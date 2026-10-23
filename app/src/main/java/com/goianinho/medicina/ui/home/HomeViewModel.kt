@@ -85,12 +85,12 @@ class HomeViewModel(
     private fun iniciarComoPaciente(uid: String, medicoId: String) {
         _uiState.update { it.copy(temMedico = medicoId.isNotBlank()) }
         listenerDocumentos?.remove()
-        listenerDocumentos = documentoRepo.ouvirDoPaciente(uid, 5) { lista ->
-            _uiState.update { it.copy(documentos = lista, erro = null) }
+        listenerDocumentos = documentoRepo.ouvirDoPaciente(uid, 5, onErro = ::mostrarErro) { lista ->
+            _uiState.update { it.copy(documentos = lista) }
         }
         listenerConsulta?.remove()
-        listenerConsulta = agendaRepo.ouvirProximaConsulta(uid) { consulta ->
-            _uiState.update { it.copy(proximaConsulta = consulta, erro = null) }
+        listenerConsulta = agendaRepo.ouvirProximaConsulta(uid, onErro = ::mostrarErro) { consulta ->
+            _uiState.update { it.copy(proximaConsulta = consulta) }
         }
         if (medicoId.isNotBlank()) {
             viewModelScope.launch {
@@ -108,19 +108,19 @@ class HomeViewModel(
 
     private fun iniciarComoMedico(uid: String) {
         listenerPendentes?.remove()
-        listenerPendentes = documentoRepo.ouvirPendentes(uid) { lista ->
-            _uiState.update { it.copy(pendentes = lista, erro = null) }
+        listenerPendentes = documentoRepo.ouvirPendentes(uid, onErro = ::mostrarErro) { lista ->
+            _uiState.update { it.copy(pendentes = lista) }
             lista.forEach { buscarNomePaciente(it.pacienteId) }
         }
         listenerConsultasDia?.remove()
         listenerConsultasDia = agendaRepo.ouvirConsultasDoDia(
-            uid, inicioDoDia(0), inicioDoDia(1)
+            uid, inicioDoDia(0), inicioDoDia(1), onErro = ::mostrarErro
         ) { todas ->
             val lista = todas.filter { it.status != "cancelada" }
             val agora = Timestamp.now()
             val proxima = lista.firstOrNull { c -> c.dataHora != null && c.dataHora >= agora }
             _uiState.update {
-                it.copy(consultasHoje = lista, proximaDoDia = proxima, erro = null)
+                it.copy(consultasHoje = lista, proximaDoDia = proxima)
             }
             lista.forEach { buscarNomePaciente(it.pacienteId) }
         }
@@ -142,6 +142,10 @@ class HomeViewModel(
                 nomesEmBusca.remove(id)
             }
         }
+    }
+
+    private fun mostrarErro(mensagem: String) {
+        _uiState.update { it.copy(erro = mensagem) }
     }
 
     private fun inicioDoDia(diasAFrente: Int): Timestamp {

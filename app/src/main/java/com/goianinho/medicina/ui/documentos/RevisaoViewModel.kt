@@ -42,7 +42,7 @@ class RevisaoViewModel(
 
     private fun carregar(medicoId: String) {
         listener?.remove()
-        listener = repository.ouvirPendentes(medicoId) { documentos ->
+        listener = repository.ouvirPendentes(medicoId, onErro = ::mostrarErro) { documentos ->
             _uiState.value = _uiState.value.copy(
                 documentos = documentos,
                 carregando = false
@@ -52,22 +52,24 @@ class RevisaoViewModel(
 
     fun confirmar(documento: Documento, observacao: String) {
         val medico = medicoId ?: return
-        repository.confirmar(documento.id, medico, observacao) { sucesso ->
-            _uiState.value = _uiState.value.copy(
-                mensagem = if (sucesso) "Resumo confirmado."
-                else "Erro ao confirmar. Tente novamente."
-            )
+        repository.confirmar(documento.id, medico, observacao, onErro = ::mostrarErro) { sucesso ->
+            if (sucesso) {
+                _uiState.value = _uiState.value.copy(mensagem = "Resumo confirmado.", erro = null)
+            }
         }
     }
 
     fun corrigir(documento: Documento, observacao: String) {
         val medico = medicoId ?: return
-        repository.corrigir(documento.id, medico, observacao) { sucesso ->
-            _uiState.value = _uiState.value.copy(
-                mensagem = if (sucesso) "Correção registrada."
-                else "Erro ao corrigir. Tente novamente."
-            )
+        repository.corrigir(documento.id, medico, observacao, onErro = ::mostrarErro) { sucesso ->
+            if (sucesso) {
+                _uiState.value = _uiState.value.copy(mensagem = "Correção registrada.", erro = null)
+            }
         }
+    }
+
+    private fun mostrarErro(mensagem: String) {
+        _uiState.value = _uiState.value.copy(carregando = false, erro = mensagem)
     }
 
     override fun onCleared() {

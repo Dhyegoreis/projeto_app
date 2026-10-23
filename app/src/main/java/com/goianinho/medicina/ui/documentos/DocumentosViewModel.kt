@@ -47,7 +47,7 @@ class DocumentosViewModel(
                     medicoId = usuario.medicoId
                     if (medicoId.isBlank()) {
                         _uiState.value = _uiState.value.copy(
-                            erro = "Você ainda não tem um médico vinculado."
+                            erro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta."
                         )
                     }
                     carregar(pacienteId)
@@ -63,7 +63,7 @@ class DocumentosViewModel(
 
     private fun carregar(pacienteId: String) {
         observacao?.remove()
-        observacao = repository.ouvirDoPaciente(pacienteId) { documentos ->
+        observacao = repository.ouvirDoPaciente(pacienteId, onErro = ::mostrarErro) { documentos ->
             _uiState.value = _uiState.value.copy(
                 documentos = documentos,
                 carregando = false
@@ -84,16 +84,26 @@ class DocumentosViewModel(
         }
         if (medicoId.isEmpty()) {
             _uiState.value = _uiState.value.copy(
-                erro = "Você ainda não tem um médico vinculado."
+                erro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta."
             )
             return
         }
-        repository.registrar(pacienteId, medicoId, nome, tipo, base64) { sucesso ->
-            _uiState.value = _uiState.value.copy(
-                mensagem = if (sucesso) "Documento registrado!"
-                else "Não foi possível registrar o documento."
-            )
+        repository.registrar(
+            pacienteId, medicoId, nome, tipo, base64,
+            onErro = ::mostrarErro
+        ) { sucesso ->
+            // Em caso de falha, o motivo já chegou por onErro
+            if (sucesso) {
+                _uiState.value = _uiState.value.copy(
+                    mensagem = "Documento registrado!",
+                    erro = null
+                )
+            }
         }
+    }
+
+    private fun mostrarErro(mensagem: String) {
+        _uiState.value = _uiState.value.copy(carregando = false, erro = mensagem)
     }
 
     fun limparMensagem() {

@@ -22,6 +22,7 @@ class DocumentoRepository {
         nome: String,
         tipo: String,
         base64: String = "",
+        onErro: (String) -> Unit = {},
         onResultado: (Boolean) -> Unit = {}
     ) {
         val resumoFixo = listOf(
@@ -51,11 +52,16 @@ class DocumentoRepository {
 
         col.add(documento)
             .addOnSuccessListener { onResultado(true) }
-            .addOnFailureListener { onResultado(false) }
+            .addOnFailureListener { e ->
+                Log.e("Goianinho", "registrar falhou", e)
+                onErro(traduzirErroFirestore(e))
+                onResultado(false)
+            }
     }
 
     fun ouvirPendentes(
         medicoId: String,
+        onErro: (String) -> Unit = {},
         onMudou: (List<Documento>) -> Unit
     ): ListenerRegistration {
         return col
@@ -66,6 +72,7 @@ class DocumentoRepository {
                     // Ex.: índice composto ainda não criado; o link aparece no Logcat
                     Log.e("Goianinho", "ouvirPendentes falhou", erro)
                     onMudou(emptyList())
+                    onErro(traduzirErroFirestore(erro))
                 } else {
                     onMudou(
                         snapshot?.toObjects(Documento::class.java)
@@ -78,6 +85,7 @@ class DocumentoRepository {
     fun ouvirDoPaciente(
         pacienteId: String,
         limite: Long = 20,
+        onErro: (String) -> Unit = {},
         onMudou: (List<Documento>) -> Unit
     ): ListenerRegistration {
         return col
@@ -89,6 +97,7 @@ class DocumentoRepository {
                     // Ex.: índice composto ainda não criado; o link aparece no Logcat
                     Log.e("Goianinho", "ouvirDoPaciente falhou", erro)
                     onMudou(emptyList())
+                    onErro(traduzirErroFirestore(erro))
                 } else {
                     onMudou(
                         snapshot?.toObjects(Documento::class.java)
@@ -102,6 +111,7 @@ class DocumentoRepository {
         docId: String,
         medicoId: String,
         observacao: String,
+        onErro: (String) -> Unit = {},
         onResultado: (Boolean) -> Unit = {}
     ) {
         atualizarStatus(
@@ -109,6 +119,7 @@ class DocumentoRepository {
             StatusDocumento.CONFIRMADO,
             medicoId,
             observacao,
+            onErro,
             onResultado
         )
     }
@@ -117,6 +128,7 @@ class DocumentoRepository {
         docId: String,
         medicoId: String,
         observacao: String,
+        onErro: (String) -> Unit = {},
         onResultado: (Boolean) -> Unit = {}
     ) {
         atualizarStatus(
@@ -124,6 +136,7 @@ class DocumentoRepository {
             StatusDocumento.CORRIGIDO,
             medicoId,
             observacao,
+            onErro,
             onResultado
         )
     }
@@ -133,6 +146,7 @@ class DocumentoRepository {
         status: String,
         medicoId: String,
         observacao: String,
+        onErro: (String) -> Unit,
         onResultado: (Boolean) -> Unit
     ) {
         col.document(docId).update(
@@ -145,6 +159,10 @@ class DocumentoRepository {
             )
         )
             .addOnSuccessListener { onResultado(true) }
-            .addOnFailureListener { onResultado(false) }
+            .addOnFailureListener { e ->
+                Log.e("Goianinho", "atualizarStatus falhou", e)
+                onErro(traduzirErroFirestore(e))
+                onResultado(false)
+            }
     }
 }

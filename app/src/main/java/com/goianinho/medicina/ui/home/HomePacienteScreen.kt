@@ -1,5 +1,6 @@
 package com.goianinho.medicina.ui.home
 
+import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -85,7 +86,7 @@ fun HomePacienteScreen(
             }) { Text("Sair", color = VerdePrincipal) }
         }
 
-        state.erro?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.erro?.let { AvisoErro(it) }
 
         // Card do Goianinho
         Card(
@@ -142,7 +143,7 @@ fun HomePacienteScreen(
         }
 
         if (!state.temMedico) {
-            Text("Você ainda não tem um médico vinculado.", color = CinzaTexto)
+            Text("Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.", color = CinzaTexto)
         }
         CardProximaConsulta(state.proximaConsulta, medico, onAbrirAgenda)
 

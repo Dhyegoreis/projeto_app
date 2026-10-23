@@ -1,5 +1,6 @@
 package com.goianinho.medicina.ui.chat
 
+import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,12 +62,7 @@ fun ChatPacienteScreen() {
             )
         }
         state.erro?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+            AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
         ChatConteudo(
             mensagens = mensagens,

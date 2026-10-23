@@ -12,6 +12,7 @@ class MensagemRepository {
 
     fun ouvirDoPaciente(
         pacienteId: String,
+        onErro: (String) -> Unit = {},
         onMudou: (List<Mensagem>) -> Unit
     ): ListenerRegistration {
         return col
@@ -21,6 +22,7 @@ class MensagemRepository {
                 if (erro != null) {
                     // Ex.: índice composto ainda não criado; o link aparece no Logcat
                     Log.e("Goianinho", "mensagens", erro)
+                    onErro(traduzirErroFirestore(erro))
                 } else {
                     onMudou(snapshot?.toObjects(Mensagem::class.java) ?: emptyList())
                 }
@@ -30,6 +32,7 @@ class MensagemRepository {
     // Conversa do médico com o Goianinho: mensagens sem paciente (pacienteId vazio)
     fun ouvirDoMedico(
         medicoId: String,
+        onErro: (String) -> Unit = {},
         onMudou: (List<Mensagem>) -> Unit
     ): ListenerRegistration {
         return col
@@ -40,13 +43,14 @@ class MensagemRepository {
                 if (erro != null) {
                     // Ex.: índice composto ainda não criado; o link aparece no Logcat
                     Log.e("Goianinho", "mensagens", erro)
+                    onErro(traduzirErroFirestore(erro))
                 } else {
                     onMudou(snapshot?.toObjects(Mensagem::class.java) ?: emptyList())
                 }
             }
     }
 
-    fun enviar(mensagem: Mensagem, perfil: String) {
+    fun enviar(mensagem: Mensagem, perfil: String, onErro: (String) -> Unit = {}) {
         if (mensagem.texto.isBlank()) return
         // criadaEm nulo: o @ServerTimestamp do modelo faz o servidor preencher a hora
         val usuario = mensagem.copy(id = "", criadaEm = null)
@@ -60,6 +64,9 @@ class MensagemRepository {
                     ).addOnFailureListener { Log.e("Goianinho", "mensagens", it) }
                 }
             }
-            .addOnFailureListener { Log.e("Goianinho", "mensagens", it) }
+            .addOnFailureListener {
+                Log.e("Goianinho", "mensagens", it)
+                onErro(traduzirErroFirestore(it))
+            }
     }
 }
