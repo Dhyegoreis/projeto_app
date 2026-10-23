@@ -1,5 +1,6 @@
 package com.goianinho.medicina.ui.login
 
+import com.goianinho.medicina.data.repository.traduzirErroAuth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.goianinho.medicina.data.repository.AuthRepository

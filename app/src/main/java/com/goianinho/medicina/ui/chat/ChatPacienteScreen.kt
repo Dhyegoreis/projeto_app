@@ -1,14 +1,81 @@
 package com.goianinho.medicina.ui.chat
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import com.goianinho.medicina.ui.comum.TelaEmConstrucao
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.goianinho.medicina.data.model.Mensagem
+import com.goianinho.medicina.ui.theme.AzulNoite
+import com.goianinho.medicina.ui.theme.Branco
+import com.goianinho.medicina.ui.theme.CinzaTexto
+import com.goianinho.medicina.ui.theme.FundoApp
+import com.goianinho.medicina.ui.theme.VerdePrincipal
 
-// PROVISÓRIA — Módulo 2. Substitua o corpo pela tela real descrita no doc.md desta pasta.
-// Mantenha os parâmetros: é por eles que a navegação liga esta tela às outras.
 @Composable
 fun ChatPacienteScreen() {
-    TelaEmConstrucao(
-        titulo = "Chat com o Goianinho",
-        modulo = "Módulo 2"
-    )
+    val viewModel: ChatViewModel = viewModel()
+    val state by viewModel.uiState.collectAsState()
+
+    val medico = state.nomeMedico.ifEmpty { "seu médico" }
+    // Com o histórico vazio, uma bolha local de boas-vindas (não é gravada)
+    val mensagens = if (state.mensagens.isEmpty() && state.erro == null) {
+        listOf(
+            Mensagem(
+                id = "boas-vindas",
+                autor = "goianinho",
+                texto = "Olá, ${state.nomeUsuario}. Sou o Goianinho, assistente do Dr. $medico. " +
+                    "Posso marcar consultas, organizar seus exames e levar tudo pronto para ele."
+            )
+        )
+    } else {
+        state.mensagens
+    }
+
+    Column(Modifier.fillMaxSize().background(FundoApp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Branco)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text(
+                "Goianinho",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = AzulNoite
+            )
+            Text(
+                "Assistente do Dr. $medico",
+                style = MaterialTheme.typography.bodyMedium,
+                color = CinzaTexto
+            )
+        }
+        state.erro?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+        ChatConteudo(
+            mensagens = mensagens,
+            chips = listOf("Marcar consulta", "Enviar outro exame", "Tirar dúvida"),
+            onChip = { viewModel.enviar(it) },
+            onEnviar = { viewModel.enviar(it) },
+            onFonteClick = null,
+            placeholder = "Fale com o Goianinho…",
+            corEnviar = VerdePrincipal
+        )
+    }
 }

@@ -1,4 +1,4 @@
-package com.goianinho.medicina.ui.login
+package com.goianinho.medicina.data.repository
 
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException

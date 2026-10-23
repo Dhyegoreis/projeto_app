@@ -1,6 +1,7 @@
 
 package com.goianinho.medicina.data.repository
 
+import android.util.Log
 import com.goianinho.medicina.data.model.Documento
 import com.goianinho.medicina.data.model.PontoResumo
 import com.goianinho.medicina.data.model.StatusDocumento
@@ -61,7 +62,11 @@ class DocumentoRepository {
             .whereEqualTo("medicoId", medicoId)
             .whereEqualTo("status", StatusDocumento.AGUARDANDO_MEDICO)
             .addSnapshotListener { snapshot, erro ->
-                if (erro == null) {
+                if (erro != null) {
+                    // Ex.: índice composto ainda não criado; o link aparece no Logcat
+                    Log.e("Goianinho", "ouvirPendentes falhou", erro)
+                    onMudou(emptyList())
+                } else {
                     onMudou(
                         snapshot?.toObjects(Documento::class.java)
                             ?: emptyList()
@@ -80,7 +85,11 @@ class DocumentoRepository {
             .orderBy("enviadoEm", Query.Direction.DESCENDING)
             .limit(limite)
             .addSnapshotListener { snapshot, erro ->
-                if (erro == null) {
+                if (erro != null) {
+                    // Ex.: índice composto ainda não criado; o link aparece no Logcat
+                    Log.e("Goianinho", "ouvirDoPaciente falhou", erro)
+                    onMudou(emptyList())
+                } else {
                     onMudou(
                         snapshot?.toObjects(Documento::class.java)
                             ?: emptyList()

@@ -1,5 +1,6 @@
 package com.goianinho.medicina.data.repository
 
+import android.util.Log
 import com.goianinho.medicina.data.model.Consulta
 import com.goianinho.medicina.data.model.Horario
 import com.google.firebase.Firebase
@@ -27,7 +28,11 @@ class AgendaRepository {
             .whereEqualTo("data", data)
             .whereEqualTo("livre", true)
             .addSnapshotListener { snap, erro ->
-                if (erro != null) return@addSnapshotListener
+                if (erro != null) {
+                    Log.e("Goianinho", "ouvirHorariosLivres falhou", erro)
+                    onMudou(emptyList())
+                    return@addSnapshotListener
+                }
                 onMudou(snap?.toObjects(Horario::class.java).orEmpty().sortedBy { it.hora })
             }
 
@@ -77,7 +82,11 @@ class AgendaRepository {
             .whereLessThan("dataHora", fim)
             .orderBy("dataHora")
             .addSnapshotListener { snap, erro ->
-                if (erro != null) return@addSnapshotListener
+                if (erro != null) {
+                    Log.e("Goianinho", "ouvirConsultasDoDia falhou", erro)
+                    onMudou(emptyList())
+                    return@addSnapshotListener
+                }
                 onMudou(snap?.toObjects(Consulta::class.java).orEmpty())
             }
 
@@ -92,7 +101,11 @@ class AgendaRepository {
             .orderBy("dataHora")
             .limit(1)
             .addSnapshotListener { snap, erro ->
-                if (erro != null) return@addSnapshotListener
+                if (erro != null) {
+                    Log.e("Goianinho", "ouvirProximaConsulta falhou", erro)
+                    onMudou(null)
+                    return@addSnapshotListener
+                }
                 onMudou(snap?.toObjects(Consulta::class.java)?.firstOrNull())
             }
 }

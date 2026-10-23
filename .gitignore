@@ -27,3 +27,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Gerado pelo Android Studio em cada máquina
+gradle/gradle-daemon-jvm.properties

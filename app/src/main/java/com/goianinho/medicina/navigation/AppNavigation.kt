@@ -66,6 +66,13 @@ private fun NavHostController.irParaAba(rota: String, inicioDoPerfil: String) {
     }
 }
 
+// Sair: volta ao login e descarta os estados salvos pelas abas (saveState em irParaAba),
+// para o próximo login não restaurar ViewModels do usuário anterior
+private fun NavHostController.sairDoApp(rotasDasAbas: List<String>) {
+    navigate(Rotas.LOGIN) { popUpTo(graph.id) { inclusive = true } }
+    rotasDasAbas.forEach { clearBackStack(it) }
+}
+
 // Depois do login, limpa a pilha para o botão "voltar" não retornar ao login
 private fun NavHostController.entrarNoPerfil(inicioDoPerfil: String) {
     navigate(inicioDoPerfil) {
@@ -118,14 +125,21 @@ fun AppNavigation(rotaInicial: String = Rotas.LOGIN) {
                 HomePacienteScreen(
                     onAbrirChat = { navController.irParaAba(Rotas.CHAT_PACIENTE, Rotas.HOME_PACIENTE) },
                     onAbrirAgenda = { navController.irParaAba(Rotas.AGENDA_PACIENTE, Rotas.HOME_PACIENTE) },
-                    onAbrirDocumentos = { navController.irParaAba(Rotas.DOCUMENTOS, Rotas.HOME_PACIENTE) }
+                    onAbrirDocumentos = { navController.irParaAba(Rotas.DOCUMENTOS, Rotas.HOME_PACIENTE) },
+                    onSair = {
+                        navController.sairDoApp(abasPaciente.map { it.rota })
+                    }
                 )
             }
             composable(Rotas.HOME_MEDICO) {
                 HomeMedicoScreen(
                     onAbrirChat = { navController.irParaAba(Rotas.CHAT_MEDICO, Rotas.HOME_MEDICO) },
                     onAbrirRevisoes = { navController.irParaAba(Rotas.REVISAO, Rotas.HOME_MEDICO) },
-                    onAbrirAgenda = { navController.irParaAba(Rotas.AGENDA_MEDICO, Rotas.HOME_MEDICO) }
+                    onAbrirAgenda = { navController.irParaAba(Rotas.AGENDA_MEDICO, Rotas.HOME_MEDICO) },
+                    onSair = {
+                        navController.sairDoApp(abasMedico.map { it.rota })
+                    },
+                    onIniciarChamada = { navController.navigate(Rotas.CHAMADA) }
                 )
             }
 

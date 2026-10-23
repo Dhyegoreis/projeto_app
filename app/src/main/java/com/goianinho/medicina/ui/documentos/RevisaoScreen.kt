@@ -19,7 +19,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -29,17 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goianinho.medicina.data.model.Documento
 
-private const val MEDICO_DEMO_REVISAO = "medico_demo"
-
 @Composable
 fun RevisaoScreen() {
     val viewModel: RevisaoViewModel = viewModel()
     val state by viewModel.uiState.collectAsState()
     val observacoes = remember { mutableStateMapOf<String, String>() }
-
-    LaunchedEffect(Unit) {
-        viewModel.carregar(MEDICO_DEMO_REVISAO)
-    }
 
     Scaffold { padding ->
         Column(
@@ -55,6 +48,11 @@ fun RevisaoScreen() {
 
             Spacer(Modifier.height(8.dp))
             Text("Confira os resumos pendentes antes de confirmar.")
+
+            state.erro?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
 
             state.mensagem?.let {
                 Spacer(Modifier.height(8.dp))
@@ -87,14 +85,12 @@ fun RevisaoScreen() {
                                 onConfirmar = {
                                     viewModel.confirmar(
                                         documento,
-                                        MEDICO_DEMO_REVISAO,
                                         observacoes[documento.id].orEmpty()
                                     )
                                 },
                                 onCorrigir = {
                                     viewModel.corrigir(
                                         documento,
-                                        MEDICO_DEMO_REVISAO,
                                         observacoes[documento.id].orEmpty()
                                     )
                                 }

@@ -28,7 +28,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,18 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goianinho.medicina.data.model.Documento
 
-private const val PACIENTE_DEMO = "paciente_demo"
-private const val MEDICO_DEMO = "medico_demo"
-
 @Composable
 fun DocumentosScreen() {
     val viewModel: DocumentosViewModel = viewModel()
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        viewModel.carregar(PACIENTE_DEMO)
-    }
 
     val escolherArquivo = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -63,8 +55,6 @@ fun DocumentosScreen() {
             ) "pdf" else "imagem"
 
             viewModel.registrarDocumento(
-                pacienteId = PACIENTE_DEMO,
-                medicoId = MEDICO_DEMO,
                 nome = nome,
                 tipo = tipo
             )
@@ -83,8 +73,6 @@ fun DocumentosScreen() {
                 val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
                 viewModel.registrarDocumento(
-                    pacienteId = PACIENTE_DEMO,
-                    medicoId = MEDICO_DEMO,
                     nome = "Foto do documento",
                     tipo = "imagem",
                     base64 = base64
@@ -133,6 +121,14 @@ fun DocumentosScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Tirar foto")
+            }
+
+            state.erro?.let { erro ->
+                Text(
+                    text = erro,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
             }
 
             state.mensagem?.let { mensagem ->

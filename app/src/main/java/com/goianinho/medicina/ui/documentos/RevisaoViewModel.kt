@@ -1,8 +1,8 @@
-
 package com.goianinho.medicina.ui.documentos
 
 import androidx.lifecycle.ViewModel
 import com.goianinho.medicina.data.model.Documento
+import com.goianinho.medicina.data.repository.AuthRepository
 import com.goianinho.medicina.data.repository.DocumentoRepository
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,11 +12,13 @@ import kotlinx.coroutines.flow.asStateFlow
 data class RevisaoUiState(
     val documentos: List<Documento> = emptyList(),
     val carregando: Boolean = true,
-    val mensagem: String? = null
+    val mensagem: String? = null,
+    val erro: String? = null
 )
 
 class RevisaoViewModel(
-    private val repository: DocumentoRepository = DocumentoRepository()
+    private val repository: DocumentoRepository = DocumentoRepository(),
+    private val auth: AuthRepository = AuthRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RevisaoUiState())
@@ -24,7 +26,21 @@ class RevisaoViewModel(
 
     private var listener: ListenerRegistration? = null
 
-    fun carregar(medicoId: String) {
+    // O médico é o próprio usuário logado
+    private val medicoId: String? = auth.usuarioLogadoUid
+
+    init {
+        if (medicoId == null) {
+            _uiState.value = _uiState.value.copy(
+                carregando = false,
+                erro = "Sessão expirada. Entre novamente."
+            )
+        } else {
+            carregar(medicoId)
+        }
+    }
+
+    private fun carregar(medicoId: String) {
         listener?.remove()
         listener = repository.ouvirPendentes(medicoId) { documentos ->
             _uiState.value = _uiState.value.copy(
@@ -34,8 +50,9 @@ class RevisaoViewModel(
         }
     }
 
-    fun confirmar(documento: Documento, medicoId: String, observacao: String) {
-        repository.confirmar(documento.id, medicoId, observacao) { sucesso ->
+    fun confirmar(documento: Documento, observacao: String) {
+        val medico = medicoId ?: return
+        repository.confirmar(documento.id, medico, observacao) { sucesso ->
             _uiState.value = _uiState.value.copy(
                 mensagem = if (sucesso) "Resumo confirmado."
                 else "Erro ao confirmar. Tente novamente."
@@ -43,8 +60,9 @@ class RevisaoViewModel(
         }
     }
 
-    fun corrigir(documento: Documento, medicoId: String, observacao: String) {
-        repository.corrigir(documento.id, medicoId, observacao) { sucesso ->
+    fun corrigir(documento: Documento, observacao: String) {
+        val medico = medicoId ?: return
+        repository.corrigir(documento.id, medico, observacao) { sucesso ->
             _uiState.value = _uiState.value.copy(
                 mensagem = if (sucesso) "Correção registrada."
                 else "Erro ao corrigir. Tente novamente."

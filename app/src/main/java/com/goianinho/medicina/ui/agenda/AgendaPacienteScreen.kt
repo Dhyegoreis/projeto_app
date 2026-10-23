@@ -62,6 +62,7 @@ fun AgendaPacienteScreen(
 
         CardProximaConsulta(
             medicoNome = uiState.medicoNome,
+            temProximaConsulta = uiState.temProximaConsulta,
             tipoEData = "${uiState.proximaConsultaTipo} · ${uiState.proximaConsultaData} · ${uiState.proximaConsultaHora}",
             onEntrarNaChamada = onEntrarNaChamada
         )
@@ -134,6 +135,7 @@ fun AgendaPacienteScreen(
 @Composable
 private fun CardProximaConsulta(
     medicoNome: String,
+    temProximaConsulta: Boolean,
     tipoEData: String,
     onEntrarNaChamada: () -> Unit
 ) {
@@ -150,28 +152,37 @@ private fun CardProximaConsulta(
                 letterSpacing = 1.sp,
                 color = Branco.copy(alpha = 0.85f)
             )
-            Text(
-                "Dr. $medicoNome",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Branco
-            )
-            Text(tipoEData, style = MaterialTheme.typography.bodyMedium, color = Branco.copy(alpha = 0.9f))
+            if (!temProximaConsulta) {
+                Text(
+                    "Nenhuma consulta marcada",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Branco
+                )
+            } else {
+                Text(
+                    "Dr. $medicoNome",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Branco
+                )
+                Text(tipoEData, style = MaterialTheme.typography.bodyMedium, color = Branco.copy(alpha = 0.9f))
 
-            Button(
-                onClick = onEntrarNaChamada,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Branco, contentColor = VerdePrincipal)
-            ) {
-                Text("\uD83C\uDFA5  Entrar na chamada", fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = onEntrarNaChamada,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Branco, contentColor = VerdePrincipal)
+                ) {
+                    Text("\uD83C\uDFA5  Entrar na chamada", fontWeight = FontWeight.Bold)
+                }
+
+                Text(
+                    "O Goianinho te lembra 1 hora antes pelo WhatsApp.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Branco.copy(alpha = 0.85f)
+                )
             }
-
-            Text(
-                "O Goianinho te lembra 1 hora antes pelo WhatsApp.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Branco.copy(alpha = 0.85f)
-            )
         }
     }
 }
