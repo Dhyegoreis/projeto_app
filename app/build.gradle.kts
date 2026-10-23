@@ -60,10 +60,5 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
 
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.firestore)
-    implementation(libs.kotlinx.coroutines.play.services)   // ← nova
-
-
+    implementation(libs.kotlinx.coroutines.play.services)
 }
