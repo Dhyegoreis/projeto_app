@@ -177,7 +177,7 @@ Os 🔴 são corrigidos **primeiro**, cada um num commit `fix(modulo): ... (ID)`
 4. **Testes cruzados:** cada integrante testa o módulo de outro com a checklist de pronto e abre Issues.
 5. **Antes da apresentação:** o líder publica as regras de segurança do Firestore por usuário (seção 11 da documentação).
 
-> **Regras do Firestore:** já estão escritas em `firestore.rules`, mas **não publicadas**. Publicá-las antes de os 4 módulos migrarem (`donoId` no chat, fim do "Assumir paciente", vínculo RN-12) quebra o app. Quem publica é o líder, depois da migração.
+> **Regras do Firestore:** já estão escritas em `firestore.rules`, mas **não publicadas**. Publicá-las antes de os 4 módulos migrarem (`donoId` no chat, fim do "Assumir paciente", vínculo RN-12) quebra o app. Quem publica é o líder, só depois dos 4 PRs de migração **e** de ajustar o `medicoId` dos pacientes já existentes para `MEDICO_TESTE_ID` e apagar a coleção `mensagens` pelo console (spec, seção 7, passos 5 e 6).
 
 ### Checklist de pronto (todo PR da fase 2)
 
