@@ -113,7 +113,7 @@ service cloud.firestore {
         && request.resource.data.confirmadoPor == eu()
         && request.resource.data.status in ["confirmado", "corrigido"]
         && (request.resource.data.status != "corrigido"
-            || request.resource.data.get("observacao", "").size() > 0)
+            || request.resource.data.get("observacao", "").trim().size() > 0)
         && soMudou(["status", "observacao", "confirmadoPor", "confirmadoEm", "apoioIA"]);
 
       allow delete: if false;
@@ -128,10 +128,12 @@ service cloud.firestore {
       allow delete: if souMedico() && resource.data.medicoId == eu();
 
       // O médico edita os próprios horários.
-      // RN-08: o paciente só ocupa um horário livre (true → false), dentro da transação da reserva
+      // RN-08: só o paciente DESSE médico ocupa um horário livre (true → false), dentro da transação da reserva
       allow update: if (souMedico() && resource.data.medicoId == eu())
         || (
           logado()
+          && meuPerfil().perfil == "paciente"
+          && resource.data.medicoId == meuPerfil().medicoId
           && resource.data.livre == true
           && request.resource.data.livre == false
           && soMudou(["livre"])
