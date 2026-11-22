@@ -107,22 +107,37 @@ A Etapa 1 (telas visuais) está concluída. Na **Etapa 2** cada tela deixa de se
 | Imagens | **Coil** (`AsyncImage`) |
 | Retrofit | Só quando a IA for real |
 
-### O que o líder entrega na `main` antes de você começar
+### O que o líder entrega na `main` antes de você começar ✅ entregue
 
 ```
 com/goianinho/medicina/
  ├── GoianinhoApp.kt           (Application: cria o AppContainer uma vez só)
  ├── data/AppContainer.kt      (cria o Firebase e os 4 repositórios)
  ├── data/Constantes.kt        (MEDICO_TESTE_ID e nomes das coleções)
- └── ui/comum/Mensagens.kt     (mensagemDeErro(erro) e os avisos "em breve")
+ ├── ui/comum/Mensagens.kt     (mensagemDeErro(erro), HorarioOcupadoException, os avisos AVISO_* e o erro ERRO_FOTO_GRANDE)
+ └── ui/comum/EstadosDeTela.kt (TelaCarregando, TelaErro e EstadoVazio)
 ```
 
-Mais: Coil e coroutines no Gradle, campo `donoId` em `Mensagem`, usuário médico de teste e horários de exemplo no Firestore. **Faça `git pull origin main` antes de começar.**
+Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (passo manual do líder):** médico de teste e horários de exemplo no Firestore. **Faça `git pull origin main` antes de começar.**
+
+**Estado da base (decisão B):** o líder entregou a base, mas **cada módulo migra o próprio código**. Hoje o `AppContainer` ainda cria `chatRepository = MensagemRepository()`, `documentoRepository = DocumentoRepository()` e `agendaRepository = AgendaRepository()` sem argumentos, e os módulos ainda usam `getInstance()` e `traduzirErroAuth`/`traduzirErroFirestore` (que continuam em `data/repository/`, intactos). Roteiro de migração do **seu** módulo, nesta ordem:
+
+1. O construtor do seu repositório passa a receber `db` (e `auth`, no caso do `AuthRepository`) e deixa de chamar `getInstance()`.
+2. Troque **a sua própria linha** no `AppContainer` para passar `db` (só a sua; as dos outros módulos ficam como estão, para não gerar conflito).
+3. Crie a `Factory` da sua ViewModel (Padrão 1) e use `viewModel(factory = ...)` na tela.
+4. Troque `traduzirErroAuth`/`traduzirErroFirestore` por `mensagemDeErro` nas suas ViewModels.
+
+> **Módulo 4 (Agenda):** a classe `HorarioOcupadoException` **já existe** em `ui/comum/Mensagens.kt` e `mensagemDeErro` já a reconhece (inclusive dentro de `cause`). Não crie a classe de novo: só lance-a na transação.
+
+> **Médico de teste:** `MEDICO_TESTE_ID` em `data/Constantes.kt` pode estar com o texto provisório `COLOQUE_AQUI_O_UID_DO_MEDICO_TESTE` até o líder criar o médico de teste. Se for o caso, o vínculo do paciente novo (RN-12) não funciona ainda; avise o líder.
+>
+> **Regras do Firestore:** `firestore.rules` já foi reescrito para a v1.6, mas **não está publicado**. O líder só publica depois que os 4 módulos migrarem e que os passos 5 e 6 do spec 7 (ajustar `medicoId` dos pacientes e apagar `mensagens`) estiverem feitos.
 
 ### Padrão 1 — ViewModel recebe o Repository pelo `AppContainer`
 
 ```kotlin
 // data/AppContainer.kt (líder)
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos (o de chat ainda se chama MensagemRepository).
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
@@ -152,6 +167,8 @@ val vm: XxxViewModel = viewModel(factory = XxxViewModel.Factory)
 O Repository passa a **receber** `db` (e `auth`) no construtor — não cria mais `FirebaseFirestore.getInstance()` lá dentro.
 
 ### Padrão 2 — `UiState` com Carregando / Sucesso / Erro
+
+`TelaCarregando`, `TelaErro` e `EstadoVazio` já existem em `ui/comum/EstadosDeTela.kt`; não crie versões próprias.
 
 ```kotlin
 sealed interface XxxUiState {
@@ -313,7 +330,7 @@ O paciente marca e acompanha consultas; o médico vê o dia com um briefing pron
 9. **Estado vazio (RNF-05):** dia sem horários → *"Sem horários livres neste dia. Escolha outro dia."*; médico sem consultas → *"Nenhuma consulta hoje."*
 10. **Responsivo (RNF-04):** troque a grade de altura fixa por `FlowRow` (ou grade com nº de colunas pelo espaço: `GridCells.Adaptive(minSize = 96.dp)`) dentro de uma tela com scroll; `widthIn(max = 600.dp)` deitado.
 
-> **Regras do Firestore (seção 11):** em `horarios` o app só pode mudar `livre` de `true` para `false`; `consultas` só pode ser criada com `pacienteId == uid` e só é lida por quem é o paciente ou o médico dela. Por isso **toda** consulta precisa filtrar por `pacienteId` ou `medicoId`.
+> **Regras do Firestore (seção 11):** em `horarios` o app só pode mudar `livre` de `true` para `false`, e só o paciente vinculado ao médico dono do horário pode fazer isso (RN-08); `consultas` só pode ser criada com `pacienteId == uid` e só é lida por quem é o paciente ou o médico dela. Por isso **toda** consulta precisa filtrar por `pacienteId` ou `medicoId`.
 
 ## Erros encontrados no código atual (corrigir nesta versão)
 
@@ -417,10 +434,10 @@ class AgendaRepository(private val db: FirebaseFirestore) {
     // mesmas consultas da Etapa 1, no formato callbackFlow acima.
 }
 
-class HorarioOcupadoException : Exception("Horário já reservado")
+// HorarioOcupadoException já existe em ui/comum/Mensagens.kt (importe de lá; não declare de novo)
 ```
 
-- `mensagemDeErro(e)` reconhece `HorarioOcupadoException` (procurando também em `e.cause`, porque a transação embrulha o erro) e devolve *"Esse horário acabou de ser reservado. Escolha outro."* — combine com o líder, que mantém `ui/comum/Mensagens.kt`.
+- `mensagemDeErro(e)` reconhece `HorarioOcupadoException` (procurando também em `e.cause`, porque a transação embrulha o erro) e devolve *"Esse horário acabou de ser reservado. Escolha outro."* — a classe e esse reconhecimento já estão em `ui/comum/Mensagens.kt`, mantido pelo líder.
 - `ouvirConsultasDoDia` e `ouvirProximaConsulta` são usadas pelo **Início** (Módulo 1). **Suba o Repository cedo, num PR pequeno.**
 
 ### 6.2. ViewModel — reserva sem clique duplo e RN-14

@@ -107,22 +107,37 @@ A Etapa 1 (telas visuais) está concluída. Na **Etapa 2** cada tela deixa de se
 | Imagens | **Coil** (`AsyncImage`) |
 | Retrofit | Só quando a IA for real |
 
-### O que o líder entrega na `main` antes de você começar
+### O que o líder entrega na `main` antes de você começar ✅ entregue
 
 ```
 com/goianinho/medicina/
  ├── GoianinhoApp.kt           (Application: cria o AppContainer uma vez só)
  ├── data/AppContainer.kt      (cria o Firebase e os 4 repositórios)
  ├── data/Constantes.kt        (MEDICO_TESTE_ID e nomes das coleções)
- └── ui/comum/Mensagens.kt     (mensagemDeErro(erro) e os avisos "em breve")
+ ├── ui/comum/Mensagens.kt     (mensagemDeErro(erro), HorarioOcupadoException, os avisos AVISO_* e o erro ERRO_FOTO_GRANDE)
+ └── ui/comum/EstadosDeTela.kt (TelaCarregando, TelaErro e EstadoVazio)
 ```
 
-Mais: Coil e coroutines no Gradle, campo `donoId` em `Mensagem`, usuário médico de teste e horários de exemplo no Firestore. **Faça `git pull origin main` antes de começar.**
+Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (passo manual do líder):** médico de teste e horários de exemplo no Firestore. **Faça `git pull origin main` antes de começar.**
+
+**Estado da base (decisão B):** o líder entregou a base, mas **cada módulo migra o próprio código**. Hoje o `AppContainer` ainda cria `chatRepository = MensagemRepository()`, `documentoRepository = DocumentoRepository()` e `agendaRepository = AgendaRepository()` sem argumentos, e os módulos ainda usam `getInstance()` e `traduzirErroAuth`/`traduzirErroFirestore` (que continuam em `data/repository/`, intactos). Roteiro de migração do **seu** módulo, nesta ordem:
+
+1. O construtor do seu repositório passa a receber `db` (e `auth`, no caso do `AuthRepository`) e deixa de chamar `getInstance()`.
+2. Troque **a sua própria linha** no `AppContainer` para passar `db` (só a sua; as dos outros módulos ficam como estão, para não gerar conflito).
+3. Crie a `Factory` da sua ViewModel (Padrão 1) e use `viewModel(factory = ...)` na tela.
+4. Troque `traduzirErroAuth`/`traduzirErroFirestore` por `mensagemDeErro` nas suas ViewModels.
+
+> **Módulo 1 (Login):** a linha `val authRepository = AuthRepository(auth, db)` do `AppContainer` **já está pronta** (forma final). O construtor do `AuthRepository` já aceita `(auth, db)`, mas ainda tem `getInstance()` como valor padrão. No PR de migração do Login: remova esses valores padrão (passo 1), crie a `Factory` e troque a criação da ViewModel (passo 3) e `traduzirErroAuth` por `mensagemDeErro` (passo 4).
+
+> **Médico de teste:** `MEDICO_TESTE_ID` em `data/Constantes.kt` pode estar com o texto provisório `COLOQUE_AQUI_O_UID_DO_MEDICO_TESTE` até o líder criar o médico de teste. Se for o caso, o vínculo do paciente novo (RN-12) não funciona ainda; avise o líder.
+>
+> **Regras do Firestore:** `firestore.rules` já foi reescrito para a v1.6, mas **não está publicado**. O líder só publica depois que os 4 módulos migrarem e que os passos 5 e 6 do spec 7 (ajustar `medicoId` dos pacientes e apagar `mensagens`) estiverem feitos.
 
 ### Padrão 1 — ViewModel recebe o Repository pelo `AppContainer`
 
 ```kotlin
 // data/AppContainer.kt (líder)
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos (o de chat ainda se chama MensagemRepository).
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
@@ -152,6 +167,8 @@ val vm: XxxViewModel = viewModel(factory = XxxViewModel.Factory)
 O Repository passa a **receber** `db` (e `auth`) no construtor — não cria mais `FirebaseFirestore.getInstance()` lá dentro.
 
 ### Padrão 2 — `UiState` com Carregando / Sucesso / Erro
+
+`TelaCarregando`, `TelaErro` e `EstadoVazio` já existem em `ui/comum/EstadosDeTela.kt`; não crie versões próprias.
 
 ```kotlin
 sealed interface XxxUiState {

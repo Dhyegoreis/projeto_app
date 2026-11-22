@@ -1,8 +1,17 @@
 rules_version = '2';
 
-// Regras do Firestore do Goianinho Medicina (projeto goianinho-1cc1f).
+// Regras do Firestore do Goianinho Medicina (projeto goianinho-1cc1f), modelo v1.6.
+//
+// ############################################################################
+// NÃO PUBLICAR antes de os 4 módulos migrarem (donoId no chat, remoção do Assumir
+// paciente, vínculo RN-12). Quem publica é o líder.
+// ############################################################################
+//
 // Publicar pelo console: Firestore → Regras → colar este arquivo → Publicar.
-// Cada regra cobre exatamente as leituras e gravações que o app faz (ver data/repository/).
+// Antes de publicar (spec 7): pacientes existentes com medicoId = MEDICO_TESTE_ID
+// e coleção "mensagens" apagada (sem donoId).
+// Cada regra cobre exatamente as leituras e gravações que os repositórios fazem
+// DEPOIS da migração descrita nos doc.md de cada módulo.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -29,50 +38,57 @@ service cloud.firestore {
 
     // ---------- usuarios (Módulo 1): id do documento = uid ----------
     match /usuarios/{uid} {
-      // Paciente lê o nome do médico; médico lê os nomes e a lista de pacientes (Assumir paciente)
-      allow read: if logado();
+      // O próprio perfil; o médico lê os pacientes vinculados a ele (medicoId == uid do médico);
+      // o paciente lê o próprio médico (uid == medicoId do perfil dele)
+      allow read: if logado() && (
+        eu() == uid
+        || resource.data.get("medicoId", "") == eu()
+        || uid == meuPerfil().get("medicoId", "")
+      );
 
-      // Cadastro: cada um cria só o próprio perfil, sem médico vinculado
+      // Cadastro: cada um cria só o próprio perfil.
+      // Médico nasce sem vínculo. RN-12: paciente nasce vinculado a um usuário que existe e é médico
+      // (checado com get(), sem escrever o UID do médico nas regras)
       allow create: if logado() && eu() == uid
         && request.resource.data.perfil in ["paciente", "medico"]
-        && request.resource.data.get("medicoId", "") == "";
-
-      // O próprio usuário edita o perfil, mas não troca de perfil nem de médico.
-      // "Assumir paciente" (provisório): o médico só preenche o medicoId de um paciente sem médico, com o próprio uid
-      allow update: if (
-          logado() && eu() == uid
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["perfil", "medicoId"])
-        ) || (
-          souMedico()
-          && resource.data.perfil == "paciente"
-          && resource.data.get("medicoId", "") == ""
-          && request.resource.data.medicoId == eu()
-          && soMudou(["medicoId"])
+        && (
+          (request.resource.data.perfil == "medico"
+            && request.resource.data.get("medicoId", "") == "")
+          || (request.resource.data.perfil == "paciente"
+            && request.resource.data.get("medicoId", "") != ""
+            && get(/databases/$(database)/documents/usuarios/$(request.resource.data.medicoId)).data.perfil == "medico")
         );
+
+      // RN-01: o próprio usuário edita o perfil, mas não troca de perfil nem de médico.
+      // O ramo "Assumir paciente" saiu na v1.6: ninguém altera o usuarios de outra pessoa
+      allow update: if logado() && eu() == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["perfil", "medicoId"]);
 
       allow delete: if false;
     }
 
-    // ---------- mensagens (Módulo 2) ----------
+    // ---------- mensagens (Módulo 2): donoId = uid de quem conversa ----------
     match /mensagens/{id} {
-      // Paciente: a própria conversa. Médico: só a conversa dele com o Goianinho (pacienteId vazio)
-      allow read: if logado() && (
-        resource.data.pacienteId == eu()
-        || (resource.data.medicoId == eu() && resource.data.pacienteId == "")
-      );
+      // Cada um lê só a própria conversa (paciente: a dele; médico: a dele com o Goianinho).
+      // A query do app precisa filtrar whereEqualTo("donoId", uid)
+      allow read: if logado() && resource.data.donoId == eu();
 
-      // A mensagem do usuário e a resposta simulada são gravadas pelo próprio app
+      // A mensagem do usuário e a resposta simulada são gravadas pelo próprio app, sempre na conversa de quem grava
       allow create: if logado()
+        && request.resource.data.donoId == eu()
         && request.resource.data.autor in ["usuario", "goianinho"]
         && (
-          (request.resource.data.pacienteId == eu()
+          (meuPerfil().perfil == "paciente"
+            && request.resource.data.pacienteId == eu()
             && request.resource.data.medicoId == meuPerfil().medicoId
             && request.resource.data.medicoId != "")
-          || (souMedico()
+          || (meuPerfil().perfil == "medico"
             && request.resource.data.medicoId == eu()
             && request.resource.data.pacienteId == "")
         );
 
+      // DECISÃO: update e delete proibidos DE PROPÓSITO. Nenhuma tela edita ou apaga mensagem;
+      // o histórico é registro. Se surgir "apagar conversa", a regra entra junto com a funcionalidade.
       allow update, delete: if false;
     }
 
@@ -90,11 +106,14 @@ service cloud.firestore {
         && request.resource.data.medicoId != ""
         && request.resource.data.status == "aguardando_medico";
 
-      // RF-21/RF-22 e RN-06: só o médico do documento confirma ou corrige
+      // RF-21/RF-22 e RN-06: só o médico do documento confirma ou corrige.
+      // RN-13: corrigir exige observação não vazia
       allow update: if souMedico()
         && resource.data.medicoId == eu()
         && request.resource.data.confirmadoPor == eu()
         && request.resource.data.status in ["confirmado", "corrigido"]
+        && (request.resource.data.status != "corrigido"
+            || request.resource.data.get("observacao", "").trim().size() > 0)
         && soMudou(["status", "observacao", "confirmadoPor", "confirmadoEm", "apoioIA"]);
 
       allow delete: if false;
@@ -109,10 +128,12 @@ service cloud.firestore {
       allow delete: if souMedico() && resource.data.medicoId == eu();
 
       // O médico edita os próprios horários.
-      // RN-08: o paciente só ocupa um horário livre (true → false), dentro da transação da reserva
+      // RN-08: só o paciente DESSE médico ocupa um horário livre (true → false), dentro da transação da reserva
       allow update: if (souMedico() && resource.data.medicoId == eu())
         || (
           logado()
+          && meuPerfil().perfil == "paciente"
+          && resource.data.medicoId == meuPerfil().medicoId
           && resource.data.livre == true
           && request.resource.data.livre == false
           && soMudou(["livre"])
@@ -131,6 +152,8 @@ service cloud.firestore {
         && request.resource.data.medicoId == meuPerfil().medicoId
         && request.resource.data.medicoId != "";
 
+      // DECISÃO: update e delete proibidos DE PROPÓSITO. Nenhuma funcionalidade da v1.6 altera ou apaga
+      // uma consulta. Quando surgir "cancelar" ou "concluir", a regra de update entra junto.
       allow update, delete: if false;
     }
   }
