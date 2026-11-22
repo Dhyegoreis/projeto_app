@@ -101,13 +101,16 @@ app/src/main/java/com/goianinho/medicina/
  │    ├── chat/              Módulo 2 — Chat com o Goianinho
  │    ├── documentos/        Módulo 3 — Documentos e Revisão
  │    ├── agenda/            Módulo 4 — Agenda e Chamada em breve
- │    ├── comum/             Componentes compartilhados + Mensagens.kt (erros e avisos padrão)
+ │    ├── comum/             Componentes compartilhados: Mensagens.kt (erros e avisos padrão),
+ │    │                      EstadosDeTela.kt (TelaCarregando, TelaErro, EstadoVazio), AvisoErro,
+ │    │                      ConsultaDoMomento e TelaEmConstrucao
  │    └── theme/             Cores e tipografia
  ├── data/
  │    ├── AppContainer.kt    Cria o Firebase e os 4 repositórios (v1.6)
  │    ├── Constantes.kt      MEDICO_TESTE_ID e nomes das coleções (v1.6)
- │    ├── model/             Classes de dados (Firestore)
- │    └── repository/        Acesso ao Firebase — cada módulo tem o seu
+ │    ├── model/             Classes de dados (Firestore): Usuario, Mensagem, Documento, Horario, Consulta
+ │    └── repository/        Acesso ao Firebase — cada módulo tem o seu (Auth, Mensagem, Documento, Agenda),
+ │                           mais ErrosAuth, ErrosFirestore e RespostasSimuladas
  └── navigation/             AppNavigation e objeto Rotas (11 rotas)
 ```
 
@@ -167,11 +170,14 @@ Os 🔴 são corrigidos **primeiro**, cada um num commit `fix(modulo): ... (ID)`
 
 ### Ordem de trabalho
 
-1. **Líder:** Coil e coroutines no Gradle, `GoianinhoApp`, `AppContainer`, `Constantes`, `Mensagens.kt`, campo `donoId` em `Mensagem`, usuário médico de teste e horários de exemplo — tudo na `main`.
+1. **Líder — ✅ base entregue:** Coil e coroutines no Gradle, `GoianinhoApp`, `AppContainer`, `Constantes`, `Mensagens.kt`, `EstadosDeTela.kt`, campo `donoId` em `Mensagem` e `firestore.rules` reescrito. Ainda são passos manuais do líder (spec, seção 7): criar o médico de teste e colocar o UID em `MEDICO_TESTE_ID` (hoje placeholder) e criar os horários de exemplo.
+   - **Decisão B:** a base não migra os módulos. Cada módulo migra o **próprio** repositório (construtor com `db`), a **própria** linha do `AppContainer`, a `Factory` e a troca de `traduzirErro*` por `mensagemDeErro`. O roteiro está em "O que o líder entrega na `main`" de cada `doc.md`.
 2. **Módulo 1** entrega o login funcional primeiro (os outros dependem do usuário logado).
 3. **Módulos 2, 3 e 4** em paralelo, cada um na sua branch, abrindo PR por etapa.
 4. **Testes cruzados:** cada integrante testa o módulo de outro com a checklist de pronto e abre Issues.
 5. **Antes da apresentação:** o líder publica as regras de segurança do Firestore por usuário (seção 11 da documentação).
+
+> **Regras do Firestore:** já estão escritas em `firestore.rules`, mas **não publicadas**. Publicá-las antes de os 4 módulos migrarem (`donoId` no chat, fim do "Assumir paciente", vínculo RN-12) quebra o app. Quem publica é o líder, depois da migração.
 
 ### Checklist de pronto (todo PR da fase 2)
 
