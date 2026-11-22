@@ -5,9 +5,10 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)
 ![Firebase](https://img.shields.io/badge/Firebase-DD2C00?logo=firebase&logoColor=white)
-![Status](https://img.shields.io/badge/status-em%20desenvolvimento-0F6E6A)
+![Status](https://img.shields.io/badge/status-fase%202%20%C2%B7%20backend-0F6E6A)
+![Versão](https://img.shields.io/badge/docs-v1.6-10302E)
 
-> > Projeto da disciplina **Softwares para Dispositivos Móveis** — Engenharia de Software, Centro Universitário Alfredo Nasser (UNIFAN).
+> Projeto da disciplina **Softwares para Dispositivos Móveis** — Engenharia de Software, Centro Universitário Alfredo Nasser (UNIFAN).
 
 ---
 
@@ -62,9 +63,14 @@ Esses princípios seguem a Resolução CFM nº 2.454/2026, que regulamenta o uso
 | Arquitetura | MVVM (Screen + ViewModel + StateFlow + Repository) |
 | Navegação | Navigation Compose |
 | Login | Firebase Authentication (e-mail e senha) |
-| Banco de dados | Cloud Firestore |
+| Banco de dados | Cloud Firestore (cache offline do próprio Firestore; sem Room) |
+| Assíncrono | Kotlin Coroutines + `Flow` (`kotlinx-coroutines-play-services` para `.await()`) |
+| Injeção de dependência | Manual, com `AppContainer` (sem Hilt) |
+| Imagens | Coil (`AsyncImage`) |
 | IDE | IntelliJ IDEA com plugin Android |
 | IA | Simulada nesta fase (respostas fixas), pronta para ser trocada por uma IA real |
+
+Tudo roda no **plano gratuito (Spark)** do Firebase, sem Firebase Storage (exige plano Blaze).
 
 ---
 
@@ -74,33 +80,110 @@ O projeto segue o MVVM recomendado pelo Google ([Guide to app architecture](http
 
 ```
 Tela (Screen)  ──evento──▶  ViewModel  ──▶  Repository  ──▶  Firebase
-     ▲                          │
-     └────── estado (StateFlow) ┘
+     ▲                          │                ▲
+     └──── UiState (StateFlow) ─┘          AppContainer
 ```
 
-- **Tela:** só desenha e repassa cliques.
-- **ViewModel:** guarda o estado e decide o que fazer.
-- **Repository:** é o único que fala com o Firebase.
+- **Tela:** só desenha o `UiState` (Carregando / Sucesso / Erro) e repassa cliques.
+- **ViewModel:** guarda o estado, valida e decide o que fazer. É criada por uma `Factory` que pega o Repository no `AppContainer`.
+- **Repository:** é o único que fala com o Firebase. Listas em tempo real saem como `Flow`; ações (gravar, confirmar, reservar) são `suspend` e devolvem `Result`, nunca lançam erro para a tela.
+- **AppContainer:** criado uma vez pelo `GoianinhoApp`; instancia o Firebase e os 4 repositórios.
 
 ### Estrutura de pastas
 
 ```
 app/src/main/java/com/goianinho/medicina/
+ ├── MainActivity.kt         Abre o tema e a navegação
+ ├── GoianinhoApp.kt         Application: cria o AppContainer (v1.6)
  ├── ui/
- │    ├── login/        Módulo 1 — Login e cadastro
- │    ├── home/         Módulo 1 — Início do paciente e do médico
- │    ├── chat/         Módulo 2 — Chat com o Goianinho
- │    ├── documentos/   Módulo 3 — Documentos e revisão
- │    ├── agenda/       Módulo 4 — Agenda e chamada
- │    ├── comum/        Componentes compartilhados
- │    └── theme/        Cores e tipografia
+ │    ├── login/             Módulo 1 — Login e Criar conta
+ │    ├── home/              Módulo 1 — Início do paciente e do médico, barra de 4 abas
+ │    ├── chat/              Módulo 2 — Chat com o Goianinho
+ │    ├── documentos/        Módulo 3 — Documentos e Revisão
+ │    ├── agenda/            Módulo 4 — Agenda e Chamada em breve
+ │    ├── comum/             Componentes compartilhados + Mensagens.kt (erros e avisos padrão)
+ │    └── theme/             Cores e tipografia
  ├── data/
- │    ├── model/        Classes de dados (Firestore)
- │    └── repository/   Acesso ao Firebase
- └── navigation/        Rotas do app
+ │    ├── AppContainer.kt    Cria o Firebase e os 4 repositórios (v1.6)
+ │    ├── Constantes.kt      MEDICO_TESTE_ID e nomes das coleções (v1.6)
+ │    ├── model/             Classes de dados (Firestore)
+ │    └── repository/        Acesso ao Firebase — cada módulo tem o seu
+ └── navigation/             AppNavigation e objeto Rotas (11 rotas)
 ```
 
-Cada pasta de módulo tem um **`doc.md`** com as telas, os requisitos, o código de referência e as aulas do Google para aquele módulo.
+Cada pasta de módulo tem um **`doc.md`** com as telas, os requisitos, **o que já existe e o que falta na v1.6**, o código de referência e as aulas do Google para aquele módulo.
+
+| Módulo | Guia |
+|---|---|
+| 1 · Login | [`ui/login/doc.md`](app/src/main/java/com/goianinho/medicina/ui/login/doc.md) |
+| 1 · Início | [`ui/home/doc.md`](app/src/main/java/com/goianinho/medicina/ui/home/doc.md) |
+| 2 · Chat | [`ui/chat/doc.md`](app/src/main/java/com/goianinho/medicina/ui/chat/doc.md) |
+| 3 · Documentos | [`ui/documentos/doc.md`](app/src/main/java/com/goianinho/medicina/ui/documentos/doc.md) |
+| 4 · Agenda | [`ui/agenda/doc.md`](app/src/main/java/com/goianinho/medicina/ui/agenda/doc.md) |
+
+A especificação completa está em [`docs/Documentacao-Goianinho-Medicina-v1.6.pdf`](docs/Documentacao-Goianinho-Medicina-v1.6.pdf).
+
+---
+
+## Fase atual — v1.6: backend no Firebase
+
+O front-end da primeira fase está pronto. Agora cada tela deixa de ser só visual: **lê e grava dados reais, trata erros, segue as regras de negócio e funciona em qualquer tamanho de tela.**
+
+### O que precisa funcionar em cada módulo
+
+| Módulo | Entrega da fase 2 |
+|---|---|
+| **1 · Login e Início** | Login real com perfil salvo (aviso se o seletor divergir) · Criar conta grava `usuarios` com `medicoId` e `criadoEm`, e desfaz a conta no Auth se falhar (RN-11, RN-12) · Esqueci a senha · Continuar logado (RF-07) · Sair (RF-37) · Início só lê, em tempo real (RN-10) |
+| **2 · Chat** | Histórico por `donoId` em tempo real · "Goianinho está digitando…" (RF-38) · respostas simuladas com gatilhos e fonte do exame mais recente · se falhar, o texto volta para o campo |
+| **3 · Documentos** | Enviar arquivo e foto (máx. 1280 px, até 700 KB em Base64) · "Ver no documento" com Coil · paciente vê "Aguardando revisão do Dr. X" (RN-05) · Corrigir exige observação (RN-13) |
+| **4 · Agenda** | Horários livres só a partir de agora (RN-14) · reserva por transação (RN-08) · próxima consulta em tempo real · agenda do médico com status do resumo · chamada mostra aviso "em breve" |
+
+### Erros a corrigir
+
+A revisão do código atual (22/11/2026) encontrou **56 erros**, listados com arquivo, linha e correção na seção **"Erros encontrados no código atual"** de cada `doc.md`:
+
+| Módulo | Erros | 🔴 Alta | Exemplos |
+|---|---|---|---|
+| 1 · Login (L-01 a L-12) | 12 | 2 | Conta pela metade quando o perfil não grava; paciente novo sem médico |
+| 1 · Início (H-01 a H-09) | 9 | 1 | "Assumir paciente" grava a partir do Início (fere RN-10) |
+| 2 · Chat (C-01 a C-11) | 11 | 3 | Texto perdido se o envio falha; chat para sem `donoId` com as novas regras |
+| 3 · Documentos (D-01 a D-12) | 12 | 3 | Corrigir sem observação; clique duplo duplica documento; app fecha sem câmera |
+| 4 · Agenda (A-01 a A-12) | 12 | 2 | Consulta marcada no dia errado ao trocar de dia; app fecha com horário mal cadastrado |
+
+Os 🔴 são corrigidos **primeiro**, cada um num commit `fix(modulo): ... (ID)`.
+
+### Requisitos de qualidade (todos os módulos)
+
+| ID | Requisito |
+|---|---|
+| RNF-01 | Botão de algo que ainda não existe (Google, voz, videochamada) mostra aviso "em breve" |
+| RNF-02 | Toda chamada ao Firebase com tratamento de erro; mensagem em português e o app nunca fecha |
+| RNF-03 | Indicador de carregamento e botão desabilitado enquanto espera o Firebase |
+| RNF-04 | Telas responsivas: 360 dp, celular grande, deitado e fonte grande |
+| RNF-05 | Lista vazia mostra um texto explicando |
+| RNF-06 | Validação antes de gravar, com erro embaixo do campo |
+| RNF-07 | Erros no Logcat (`Log.e("Goianinho", ...)`) e bugs de teste viram Issue |
+| RNF-08 | Regras do Firestore por usuário; nunca logar senha nem dado de saúde |
+
+### Ordem de trabalho
+
+1. **Líder:** Coil e coroutines no Gradle, `GoianinhoApp`, `AppContainer`, `Constantes`, `Mensagens.kt`, campo `donoId` em `Mensagem`, usuário médico de teste e horários de exemplo — tudo na `main`.
+2. **Módulo 1** entrega o login funcional primeiro (os outros dependem do usuário logado).
+3. **Módulos 2, 3 e 4** em paralelo, cada um na sua branch, abrindo PR por etapa.
+4. **Testes cruzados:** cada integrante testa o módulo de outro com a checklist de pronto e abre Issues.
+5. **Antes da apresentação:** o líder publica as regras de segurança do Firestore por usuário (seção 11 da documentação).
+
+### Checklist de pronto (todo PR da fase 2)
+
+- [ ] Tela com `UiState` Carregando / Sucesso / Erro
+- [ ] Nenhuma chamada ao Firebase fora do Repository
+- [ ] Testado em modo avião: mensagem de erro e o app não fecha
+- [ ] Botões sem função mostram o aviso "em breve"
+- [ ] Botões de ação desabilitados enquanto carrega
+- [ ] Testado em celular pequeno, grande, deitado e com fonte grande
+- [ ] Regras de negócio conferidas nos dois perfis
+- [ ] Nenhum log com senha ou dado de saúde
+- [ ] Visual igual ao protótipo
 
 ---
 
@@ -124,7 +207,11 @@ cd projeto_app
 2. Conecte o celular (ou inicie um emulador).
 3. Clique em **Run ▶**.
 
-O arquivo `google-services.json` já está no repositório (privado), então o app conecta ao Firebase do projeto sem configuração extra.
+O arquivo `google-services.json` já está no repositório (privado), então o app conecta ao Firebase do projeto sem configuração extra. Ele não é uma senha: identifica o projeto e vai dentro de todo APK. A proteção real dos dados vem das regras do Firestore.
+
+**Usuário de teste:** `paciente.teste@goianinho.com` (paciente). Na fase 2 o líder cria também o médico de teste, ao qual todo paciente novo é vinculado (RN-12).
+
+**Primeira execução de uma lista:** se o Logcat mostrar `FAILED_PRECONDITION`, a consulta precisa de índice composto — abra o link do Logcat, crie o índice e avise o líder.
 
 ---
 
@@ -151,6 +238,8 @@ O arquivo `google-services.json` já está no repositório (privado), então o a
 - Cada integrante trabalha **somente na sua branch**.
 - A `main` é alterada **apenas pelo líder**, por meio de Pull Request revisado e aprovado.
 - Commits seguem o padrão `feat(modulo): descrição` ou `fix(modulo): descrição`.
+- Gradle, `theme/`, `navigation/`, `data/model/`, `AppContainer` e `ui/comum/` só mudam com aviso no grupo e decisão do líder.
+- **Bug encontrado em teste vira Issue** com a etiqueta `bug`: título curto, passos para reproduzir, esperado, o que aconteceu, print ou Logcat e a branch. A correção cita a Issue (`fix(chat): ... Corrige #12`).
 
 ---
 
@@ -158,13 +247,13 @@ O arquivo `google-services.json` já está no repositório (privado), então o a
 
 - [x] Protótipo das 9 telas
 - [x] Documentação do projeto e dos módulos
-- [x] Fundação: Firebase, tema, modelos de dados e navegação
-- [ ] Telas visuais de cada módulo
-- [ ] Integração com Firebase (Auth e Firestore)
-- [ ] Navegação ponta a ponta e testes entre módulos
-- [ ] Ajustes finais e demonstração
+- [x] **Etapa 0** — Fundação: Firebase, tema, modelos de dados e navegação
+- [x] **Etapa 1** — Telas visuais de cada módulo
+- [ ] **Etapa 2** — Integração com Firebase (Auth e Firestore) · ⏳ em andamento (v1.6)
+- [ ] **Etapa 3** — Navegação ponta a ponta e testes entre módulos
+- [ ] **Etapa 4** — Ajustes finais e demonstração
 
-**Próximas fases (fora do escopo atual):** IA real respondendo no chat, leitura real de exames, videochamada, canal WhatsApp e upload de arquivos.
+**Próximas fases (fora do escopo atual):** IA real (LLM) respondendo no chat, leitura real de exames (OCR + resumo), upload de arquivos (Firebase Storage), videochamada, canal WhatsApp e ligação, aprendizado do perfil de engajamento e IA que sugere hipótese clínica.
 
 ---
 

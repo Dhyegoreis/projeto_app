@@ -1,12 +1,15 @@
 # Módulo 2 — Chat com o Goianinho
 
+> **Versão v1.6 — Fase 2: backend no Firebase.** A Etapa 1 (telas visuais) está concluída. Este doc diz **o que já existe** e **o que você precisa fazer agora** (seções 2 e 3) e **os erros do código atual que você precisa corrigir** (seção "Erros encontrados"). Leia também os *padrões obrigatórios da fase 2*, iguais para todo o time.
+
 | | |
 |---|---|
 | **Responsável** | [INTEGRANTE 2] |
 | **Branch** | `feature/chat-ia` |
 | **Pasta** | `ui/chat` |
 | **Telas do protótipo** | 2 · Chat com o Goianinho (paciente) e 2 · Goianinho do médico · [abrir protótipo](https://claude.ai/artifact/4mYTUtWr2hiNwCJp4pTK9Z) |
-| **Documentação completa** | Seção 7 da Documentação do Projeto |
+| **Documentação completa** | Seção 7 e **Seção 11 (Fase 2 — Backend)** da Documentação v1.6 (`docs/Documentacao-Goianinho-Medicina-v1.6.pdf`) |
+| **Etapa atual** | Etapa 2 — Integração com Firebase (⏳ em andamento) |
 
 > **Duas visões, um dono:** você entrega o **chat do paciente** e o **Goianinho do médico**. O módulo só está pronto quando as duas passam nos critérios de aceite.
 
@@ -14,26 +17,30 @@
 
 ## Arquitetura obrigatória (vale para todo o projeto)
 
-O projeto segue o **MVVM recomendado pelo Google** ([Guide to app architecture](https://developer.android.com/topic/architecture)). Todo código deste módulo precisa respeitar as três camadas:
+O projeto segue o **MVVM recomendado pelo Google** ([Guide to app architecture](https://developer.android.com/topic/architecture)). Na v1.6 a arquitetura **continua a mesma**; o que muda é *como* as camadas se ligam:
 
 ```
 Tela (Screen)  ──evento──▶  ViewModel  ──▶  Repository  ──▶  Firebase
      ▲                          │
-     └────── estado (StateFlow) ┘
+     └──── UiState (StateFlow) ─┘
 ```
 
 | Camada | Arquivo | Pode | Não pode |
 |---|---|---|---|
-| **Tela** | `XxxScreen.kt` | Desenhar a interface, ler o estado e avisar cliques | Chamar o Firebase ou navegar sozinha |
-| **ViewModel** | `XxxViewModel.kt` | Guardar o estado (`UiState` + `StateFlow`) e decidir o que fazer em cada ação | Ter código de interface ou chamar `Firebase.*` diretamente |
-| **Repository** | `data/repository/` | Ser **o único** que fala com o Firebase (Auth e Firestore) | Saber que tela existe |
+| **Tela** | `XxxScreen.kt` | Desenhar, ler o `UiState` e avisar cliques | Chamar o Firebase, navegar sozinha ou escrever texto de erro solto |
+| **ViewModel** | `XxxViewModel.kt` | Guardar o estado (`UiState` + `StateFlow`), validar e decidir cada ação | Ter código de interface ou criar `FirebaseFirestore`/`FirebaseAuth` |
+| **Repository** | `data/repository/` | Ser **o único** que fala com o Firebase; listas saem como `Flow`, ações são `suspend` e devolvem `Result` | Saber que tela existe ou mostrar mensagem |
 
 **Três regras que derivam disso:**
 - **Fluxo em mão única:** o estado desce (ViewModel → Tela) e os eventos sobem (Tela → ViewModel).
 - **Fonte única da verdade:** o dado oficial está no Firestore, e o acesso a ele passa pelo Repository dono da coleção.
 - **Telas independentes:** a tela recebe funções (`onAbrirChat`, `onVoltar`...) e quem liga as telas é o `navigation/`.
 
-**Teste rápido antes de abrir o PR:** procure `Firebase.` no seu código. Se aparecer em algum arquivo fora de `data/repository/`, está no lugar errado.
+**Teste rápido antes de abrir o PR:**
+```bash
+grep -rn "Firebase\.\|getInstance()" app/src/main/java/com/goianinho/medicina/ui
+```
+Não pode aparecer nada. Na v1.6 nem o Repository chama `getInstance()`: quem cria o Firebase é o `AppContainer`.
 
 Para estudar: [Camada de UI](https://developer.android.com/topic/architecture/ui-layer) · [Camada de dados](https://developer.android.com/topic/architecture/data-layer) · [Codelab: ViewModel and State in Compose](https://developer.android.com/codelabs/basic-android-kotlin-compose-viewmodel-and-state)
 
@@ -48,14 +55,15 @@ Para estudar: [Camada de UI](https://developer.android.com/topic/architecture/ui
 - ❌ fazer merge de qualquer branch na `main`, nem pelo botão do GitHub;
 - ❌ usar `git push --force` em qualquer branch;
 - ❌ trabalhar, fazer commit ou push na branch de outro integrante;
-- ❌ alterar arquivos fora das suas pastas (`ui/chat` e o seu Repository em `data/repository/`) sem combinar com o líder.
+- ❌ alterar arquivos fora das suas pastas (`ui/chat` e o seu Repository em `data/repository/`) sem combinar com o líder;
+- ❌ mexer no Gradle (`libs.versions.toml`, `build.gradle.kts`): **na v1.6 o líder adiciona Coil e coroutines na `main`**, e você só faz `git pull origin main`.
 
 **O que você pode fazer:**
 - ✅ trazer o que já entrou na `main` **para a sua branch** (isso não altera a `main`);
 - ✅ abrir um **Pull Request** da sua branch para a `main` quando terminar uma etapa;
 - ✅ ajustar o PR quando o líder pedir mudanças.
 
-**Quem altera a `main`:** só o **líder do projeto**. Ele revisa o seu Pull Request, aprova e faz o merge. Se precisar mudar algo compartilhado (`theme/`, `navigation/`, `data/model/`, Gradle), avise no grupo e o líder decide como entra.
+**Quem altera a `main`:** só o **líder do projeto**. Ele revisa o seu Pull Request, aprova e faz o merge ("Squash and merge"). Se precisar mudar algo compartilhado (`theme/`, `navigation/`, `data/model/`, `data/AppContainer.kt`, `ui/comum/`, Gradle), avise no grupo e o líder decide como entra.
 
 ### Comandos do dia a dia
 
@@ -68,12 +76,12 @@ git checkout feature/chat-ia
 # Sempre antes de começar: confirmar que está na branch certa
 git branch --show-current          # tem que mostrar: feature/chat-ia
 
-# Trazer as novidades da main para a sua branch
+# Trazer as novidades da main para a sua branch (faça isso ANTES de começar a v1.6)
 git pull origin main
 
 # Salvar e enviar o seu trabalho (sempre para a SUA branch)
 git add .
-git commit -m "feat(modulo): o que você fez"
+git commit -m "feat(modulo): o que você fez"      # bug de Issue: "fix(modulo): ... Corrige #12"
 git push origin feature/chat-ia
 ```
 
@@ -83,31 +91,255 @@ Terminou uma etapa? No GitHub, abra **Pull request → base: `main` ← compare:
 
 ---
 
+## Fase 2 (v1.6) — padrões obrigatórios para todos os módulos
+
+A Etapa 1 (telas visuais) está concluída. Na **Etapa 2** cada tela deixa de ser só visual: lê e grava dados reais, trata erros, segue as regras de negócio e funciona em qualquer tamanho de tela. O backend continua o **Firebase (Auth + Firestore), plano gratuito**. Documentação completa: **seção 11 da Documentação v1.6** (`docs/Documentacao-Goianinho-Medicina-v1.6.pdf`).
+
+### Decisões técnicas (não discutir de novo no PR)
+
+| Assunto | Decisão |
+|---|---|
+| Backend | Firebase Auth + Cloud Firestore (mantido) |
+| Banco local (Room) | **Não usar** — o Firestore já faz cache offline |
+| Injeção de dependência | **Manual**, com `AppContainer` (sem Hilt) |
+| Flavors mock/prod | **Não usar** — dados de teste ficam no Firestore |
+| Estado da tela | `UiState` com **Carregando / Sucesso / Erro** |
+| Imagens | **Coil** (`AsyncImage`) |
+| Retrofit | Só quando a IA for real |
+
+### O que o líder entrega na `main` antes de você começar
+
+```
+com/goianinho/medicina/
+ ├── GoianinhoApp.kt           (Application: cria o AppContainer uma vez só)
+ ├── data/AppContainer.kt      (cria o Firebase e os 4 repositórios)
+ ├── data/Constantes.kt        (MEDICO_TESTE_ID e nomes das coleções)
+ └── ui/comum/Mensagens.kt     (mensagemDeErro(erro) e os avisos "em breve")
+```
+
+Mais: Coil e coroutines no Gradle, campo `donoId` em `Mensagem`, usuário médico de teste e horários de exemplo no Firestore. **Faça `git pull origin main` antes de começar.**
+
+### Padrão 1 — ViewModel recebe o Repository pelo `AppContainer`
+
+```kotlin
+// data/AppContainer.kt (líder)
+class AppContainer {
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
+    val authRepository = AuthRepository(auth, db)
+    val chatRepository = ChatRepository(db)
+    val documentoRepository = DocumentoRepository(db)
+    val agendaRepository = AgendaRepository(db)
+}
+
+// Na SUA ViewModel
+class XxxViewModel(private val repo: XxxRepository) : ViewModel() {
+    // ...
+    companion object {
+        val Factory = viewModelFactory {
+            initializer {
+                val app = this[APPLICATION_KEY] as GoianinhoApp
+                XxxViewModel(app.container.xxxRepository)
+            }
+        }
+    }
+}
+
+// Na SUA tela
+val vm: XxxViewModel = viewModel(factory = XxxViewModel.Factory)
+```
+
+O Repository passa a **receber** `db` (e `auth`) no construtor — não cria mais `FirebaseFirestore.getInstance()` lá dentro.
+
+### Padrão 2 — `UiState` com Carregando / Sucesso / Erro
+
+```kotlin
+sealed interface XxxUiState {
+    data object Carregando : XxxUiState
+    data class Sucesso(val itens: List<Item>) : XxxUiState   // lista vazia = estado vazio (RNF-05)
+    data class Erro(val mensagem: String) : XxxUiState
+}
+
+// ViewModel: o Flow do Repository vira estado
+val uiState: StateFlow<XxxUiState> = repo.ouvirAlgo(uid)
+    .map<List<Item>, XxxUiState> { XxxUiState.Sucesso(it) }
+    .catch { emit(XxxUiState.Erro(mensagemDeErro(it))) }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), XxxUiState.Carregando)
+
+// Tela
+when (val e = estado) {
+    is XxxUiState.Carregando -> TelaCarregando()
+    is XxxUiState.Sucesso    -> if (e.itens.isEmpty()) EstadoVazio("…") else Lista(e.itens)
+    is XxxUiState.Erro       -> TelaErro(e.mensagem, onTentarDeNovo = vm::recarregar)
+}
+```
+
+Para formulários (Login, Criar conta, campo do chat, observação da Revisão) use uma `data class` de estado com `carregando: Boolean` e `erro: String?` — o importante é que **as três situações existam** na tela.
+
+### Padrão 3 — Repository: listas em `Flow`, ações `suspend` + `Result`
+
+```kotlin
+// Lista em tempo real
+fun ouvirAlgo(uid: String): Flow<List<Item>> = callbackFlow {
+    val registro = db.collection("colecao")
+        .whereEqualTo("pacienteId", uid)
+        .addSnapshotListener { snap, erro ->
+            if (erro != null) { close(erro); return@addSnapshotListener }
+            trySend(snap?.toObjects(Item::class.java).orEmpty())
+        }
+    awaitClose { registro.remove() }      // para de ouvir quando a tela fecha
+}
+
+// Ação: nunca lança erro para a tela
+suspend fun gravar(item: Item): Result<Unit> = runCatching {
+    withTimeout(10_000) {                  // sem internet o .await() esperaria para sempre
+        db.collection("colecao").add(item).await()
+    }
+}
+
+// ViewModel
+viewModelScope.launch {
+    _estado.update { it.copy(carregando = true, erro = null) }
+    repo.gravar(item)
+        .onSuccess { _estado.update { it.copy(carregando = false) } }
+        .onFailure { e ->
+            Log.e("Goianinho", "gravar falhou", e)                       // RNF-07 (sem dado de saúde)
+            _estado.update { it.copy(carregando = false, erro = mensagemDeErro(e)) }
+        }
+}
+```
+
+> Os callbacks `onErro`/`onMudou` e o `ListenerRegistration` da Etapa 1 **saem**. As funções `traduzirErroAuth` e `traduzirErroFirestore` são substituídas por `mensagemDeErro(erro)` em `ui/comum/Mensagens.kt`.
+
+### Requisitos de qualidade (RNF — valem para todos)
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| RNF-01 | **Aviso de funcionalidade:** botão de algo que ainda não existe (Google, voz, videochamada) mostra um `Snackbar` dizendo que chega em breve. Nenhum botão fica sem resposta. | Must |
+| RNF-02 | **Erros tratados:** toda chamada ao Firebase dentro de `runCatching`; o erro vira mensagem em português (`mensagemDeErro`) e o app nunca fecha, nem sem internet. | Must |
+| RNF-03 | **Carregamento:** indicador na tela e botão da ação **desabilitado** enquanto espera o Firebase (evita clique duplo). | Must |
+| RNF-04 | **Responsivo:** funciona em 360 dp e em celular grande, em pé e deitado, com fonte grande do sistema. | Must |
+| RNF-05 | **Estado vazio:** lista sem dados mostra um texto explicando. | Should |
+| RNF-06 | **Validação antes de gravar:** e-mail válido, senha 6+, texto não vazio — erro **embaixo do campo**, antes de chamar o Firebase. | Must |
+| RNF-07 | **Bugs registrados:** `Log.e("Goianinho", ...)` em erro inesperado; bug de teste vira Issue no GitHub. | Should |
+| RNF-08 | **Dados protegidos:** regras do Firestore por usuário; nunca logar senha nem dado de saúde. | Must |
+
+**Mensagens padrão** (vêm de `mensagemDeErro(erro)`; ninguém escreve texto de erro solto):
+
+| Situação | Mensagem |
+|---|---|
+| E-mail ou senha errados | E-mail ou senha incorretos. |
+| E-mail já cadastrado | Este e-mail já tem uma conta. Tente entrar. |
+| Senha fraca | A senha precisa ter pelo menos 6 caracteres. |
+| Sem internet / tempo esgotado | Sem conexão. Verifique sua internet e tente de novo. |
+| Sem permissão (`PERMISSION_DENIED`) | Você não tem acesso a esta informação. |
+| Horário já reservado (RN-08) | Esse horário acabou de ser reservado. Escolha outro. |
+| Foto grande demais | A foto é grande demais. Tente de novo com menos zoom ou mais longe. |
+| Qualquer outro erro | Algo deu errado. Tente de novo. |
+| Aviso: login com Google | Entrar com Google chega em breve. Use e-mail e senha. |
+| Aviso: comando de voz | O comando de voz chega em breve. Por enquanto, digite sua mensagem. |
+| Aviso: videochamada | A videochamada ainda não está disponível nesta versão. |
+
+### Como deixar a tela responsiva (RNF-04)
+
+- Conteúdo que pode passar da tela fica em `LazyColumn` ou em `Column` com `verticalScroll(rememberScrollState())`.
+- Em tela larga (deitado, tablet): conteúdo centralizado com `Modifier.widthIn(max = 600.dp)`.
+- Telas com campo de texto usam `Modifier.imePadding()` para o teclado não cobrir o campo nem o botão.
+- Nada de altura fixa em card com texto: use padding e deixe o conteúdo definir a altura.
+- Botões e ícones clicáveis com área mínima de **48 dp**.
+- Girar o celular não perde nada: estado na ViewModel, campos digitados em `rememberSaveable`.
+- Teste mínimo: celular pequeno, celular grande, deitado e com **fonte grande** nas configurações do Android.
+
+### Bugs comuns que já sabemos evitar
+
+| Sintoma | Causa | Como evitar |
+|---|---|---|
+| Lista não carrega; Logcat mostra `FAILED_PRECONDITION` | Filtro + ordenação pedem índice composto | Abrir o link do Logcat, criar o índice e avisar o líder |
+| Itens duplicados | Listener nunca removido | `callbackFlow` com `awaitClose { registro.remove() }` |
+| Duas contas / duas consultas criadas | Clique duplo | Botão desabilitado enquanto carrega (RNF-03) |
+| Voltar leva de novo ao Login | Pilha não foi limpa | Usar o `entrarNoPerfil` da navegação (já faz `popUpTo`) |
+| App trava "salvando" sem internet | `.await()` espera o servidor | `withTimeout(10_000)` + mensagem de sem conexão |
+| Mensagem nova sem hora / fora de ordem | `@ServerTimestamp` ainda nulo no 1º aviso | Data como `Timestamp?` e tratar o nulo na tela |
+| App perde dados ao girar | Estado só na tela | Estado na ViewModel e `rememberSaveable` |
+
+**Como reportar um bug:** Issue no GitHub com a etiqueta `bug`: título curto, passos para reproduzir, esperado, o que aconteceu, print ou trecho do Logcat e a branch. Quem corrige commita `fix(modulo): ...` citando a Issue (`Corrige #12`).
+
+### Checklist de pronto (todo PR da fase 2)
+
+- [ ] A tela usa `UiState` com Carregando, Sucesso e Erro
+- [ ] Nenhuma chamada ao Firebase fora do Repository (teste rápido do `grep` acima)
+- [ ] Testado em **modo avião**: aparece mensagem de erro e o app não fecha
+- [ ] Botões sem função mostram o aviso "em breve"
+- [ ] Botões de ação desabilitados enquanto carrega
+- [ ] Testado em celular pequeno, grande, deitado e com fonte grande
+- [ ] Regras de negócio do módulo conferidas nos **dois perfis** (paciente e médico)
+- [ ] Nenhum log com senha ou dado de saúde
+- [ ] Visual continua igual ao protótipo
+
+---
+
 ## 1. O que estas telas fazem
 
 É o coração do projeto: a conversa em linguagem natural com o Goianinho.
 
 **Paciente:** cabeçalho com avatar do Goianinho e "Assistente do Dr. X"; mensagens em bolhas; card de **fonte** dentro das respostas que citam documento; chips de ação rápida; campo de texto; botões enviar e voz.
 
-**Médico:** cabeçalho escuro; faixa com os contadores do dia; fonte **clicável** que abre a Revisão (Módulo 3); chips "Próximo paciente", "Pendências do dia" e "Abrir revisões".
+**Médico:** cabeçalho escuro; faixa com os contadores do dia; fonte **clicável** que abre a Revisão (Módulo 3); chips "Próximo paciente" e "Pendências do dia".
 
-## 2. Arquivos que você cria
+**Na v1.6 o objetivo é: o chat tem que funcionar** — gravar, responder, mostrar "digitando…", sobreviver a falta de internet e nunca perder o que o usuário escreveu.
 
-```
-ui/chat/
- ├── ChatPacienteScreen.kt
- ├── ChatMedicoScreen.kt
- ├── ChatConteudo.kt          → lista + chips + campo, usado pelas DUAS telas
- ├── BolhaMensagem.kt         → uma bolha (com ou sem card de fonte)
- └── ChatViewModel.kt
-data/repository/
- ├── MensagemRepository.kt    → lê e grava em "mensagens"
- └── RespostasSimuladas.kt    → gerarResposta(mensagem) — a "IA" desta fase
-```
+## 2. Onde estamos (fim da Etapa 1)
 
-> **Dica de reaproveitamento:** as duas telas têm a mesma estrutura e só mudam cores, cabeçalho e chips. Faça um `ChatConteudo` que recebe esses detalhes por parâmetro, e as duas telas ficam pequenas.
+| Item | Situação |
+|---|---|
+| `ChatPacienteScreen`, `ChatMedicoScreen`, `ChatConteudo`, `BolhaMensagem`, `ChatViewModel` | ✅ Telas prontas, gravando e lendo no Firestore |
+| `RespostasSimuladas` com `Contexto` (nome do médico, último exame, pendentes, próximo paciente) | ✅ Respostas usam dados reais; RN-03 e RN-05 respeitadas |
+| `MensagemRepository` | ⚠️ Cria `FirebaseFirestore.getInstance()`, usa callbacks; **passa a se chamar `ChatRepository(db)`** |
+| Conversa do médico | ⚠️ Hoje filtra `medicoId` + `pacienteId == ""` (gambiarra). Na v1.6 usa o campo **`donoId`** |
+| Resposta do Goianinho | ⚠️ Se a gravação da resposta falhar, só vai para o Logcat; o usuário não fica sabendo |
+| "Goianinho está digitando…" (RF-38) | ❌ Não existe |
+| Falha ao enviar | ❌ O texto já saiu do campo e se perde |
+| Gatilhos | ⚠️ Faltam "dor" e "oi" (cumprimento) |
+| Botão de voz | ❌ Sem resposta (viola RNF-01) |
+| Responsividade | ❌ Sem `imePadding`; bolha com `widthIn(max = 300.dp)` fixo |
 
-## 3. Requisitos
+## 3. O que fazer na v1.6 (sua lista de tarefas)
+
+1. **Renomear e injetar:** `MensagemRepository` → **`ChatRepository(db)`** (é o nome usado no `AppContainer`). `ChatViewModel` com `Factory`.
+2. **Campo `donoId` (mudança no modelo, feita pelo líder):** toda mensagem grava `donoId` = uid de quem conversa (paciente **ou** médico). Mensagem do Goianinho repete o `donoId` da conversa.
+3. **Histórico (RF-08):** `ouvirConversa(donoId): Flow<List<Mensagem>>` — `whereEqualTo("donoId", ...)` + `orderBy("criadaEm")`. Substitui `ouvirDoPaciente` e `ouvirDoMedico`. Pede índice composto (abrir o link do Logcat e avisar o líder).
+4. **Enviar (RF-09, RF-38):** `suspend enviar(...)`: grava a mensagem do usuário → mostra **"Goianinho está digitando…"** por ~1 s → grava a resposta com `autor = "goianinho"`. Tudo com `Result`.
+5. **Falha (RNF-02):** se não gravar, o **texto volta para o campo** e aparece `mensagemDeErro(e)`. Se falhar só a resposta, mostrar aviso — nada se perde.
+6. **Respostas (RN-03, RN-04):** acrescentar gatilhos **"dor"** (orienta procurar o médico/urgência, sem diagnosticar) e **"oi"/"olá"** (apresenta-se como assistente do Dr. X — P-04). Toda resposta sobre exame termina lembrando que o médico confirma.
+7. **Fonte (RF-10):** respostas sobre exame citam o **documento mais recente** do paciente (nome, página, linha) — já feito via `Contexto`; manter.
+8. **Visão do médico:** respostas simuladas usam os números reais do dia (consultas, revisões pendentes) — já feito; manter e conferir com o Início.
+9. **Voz (RNF-01):** o botão de microfone mostra o Snackbar *"O comando de voz chega em breve. Por enquanto, digite sua mensagem."* (o RF-14 continua Could).
+10. **Carregamento (RNF-03):** botão Enviar e chips desabilitados enquanto grava; campo vazio não envia (RNF-06).
+11. **Hora nula:** `criadaEm` vem nulo no primeiro aviso do listener (`@ServerTimestamp`). A bolha mostra "agora" e a ordem não quebra.
+12. **Responsivo (RNF-04):** `imePadding()` na coluna do chat; bolha com largura máxima **proporcional** (ex.: 80% da largura) em vez de 300 dp fixo; campo cresce até 4 linhas.
+
+## Erros encontrados no código atual (corrigir nesta versão)
+
+> Análise do líder em 22/11/2026, na branch `feature/chat-ia`. Os números de linha valem para essa versão; se o arquivo já mudou, procure pelo trecho citado. **Cada erro corrigido = 1 commit** `fix(chat): ... (C-XX)`. Gravidade: 🔴 alta (perde dado, fecha o app ou quebra regra de negócio) · 🟠 média (comportamento errado que o usuário percebe) · 🟡 baixa (acabamento, responsividade, código).
+
+| ID | Grav. | Onde | O que acontece | Como corrigir |
+|---|---|---|---|---|
+| C-01 | 🔴 | [`ChatConteudo.kt:115-116`](ChatConteudo.kt#L115) · [`ChatViewModel.kt:243`](ChatViewModel.kt#L243) | O campo é **limpo antes** de saber se a mensagem foi gravada. Se a gravação falhar, o que o paciente escreveu **se perde** e só aparece um aviso. | Enviar pela ViewModel com `Result`; na falha, devolver o texto ao campo (`textoDevolvido`, ver 6.2). |
+| C-02 | 🔴 | [`MensagemRepository.kt:69`](../../data/repository/MensagemRepository.kt#L69) | Se a **resposta do Goianinho** não for gravada, o erro só vai para o Logcat: o usuário fica **sem resposta e sem aviso**. | Gravar a resposta com `Result` e mostrar `mensagemDeErro` se falhar. |
+| C-03 | 🔴 | [`MensagemRepository.kt:33-40`](../../data/repository/MensagemRepository.kt#L33) | A conversa do médico usa a gambiarra `pacienteId == ""`, e nenhuma mensagem grava `donoId`. Quando as regras da v1.6 forem publicadas (ler/criar só com `donoId == uid`), **o chat para de funcionar para os dois perfis**. | Gravar `donoId` em toda mensagem e trocar as duas consultas por `ouvirConversa(donoId)`. |
+| C-04 | 🟠 | [`ChatConteudo.kt:83`](ChatConteudo.kt#L83) | Os chips não ficam bloqueados durante o envio: tocar 3 vezes seguidas em "Pendências do dia" gera **3 perguntas e 3 respostas**. | Flag `enviando` no estado; chips e botão Enviar com `enabled = !enviando` (**RNF-03**). |
+| C-05 | 🟠 | [`ChatViewModel.kt:170`](ChatViewModel.kt#L170) (`montarContexto`) | Se o médico perguntar logo ao abrir, as listas (consultas, pendentes, nomes) ainda **não chegaram** e o Goianinho responde errado: "Você não tem mais consultas hoje" ou "Nada pendente". | Só liberar o envio depois que os fluxos de contexto emitirem pela primeira vez (estado `Carregando`). |
+| C-06 | 🟠 | [`ChatMedicoScreen.kt:49`](ChatMedicoScreen.kt#L49) e [`:69`](ChatMedicoScreen.kt#L69) · [`ChatPacienteScreen.kt:37`](ChatPacienteScreen.kt#L37) e [`:59`](ChatPacienteScreen.kt#L59) | Enquanto carrega, o cabeçalho mostra **"Dr. "** sem nome e os contadores mostram **0**. Se o nome já tem "Dr.", vira **"Dr. Dr. Fulano"**. | Mostrar os contadores só com os dados carregados e usar o helper `nomeDoMedico` (combinar com o Módulo 1, ver H-04). |
+| C-07 | 🟡 | [`ChatConteudo.kt:63`](ChatConteudo.kt#L63) | Com `enableEdgeToEdge()` e sem `imePadding()`, **o teclado cobre o campo de mensagem** em vários aparelhos. | `Modifier.imePadding()` na coluna do chat (**RNF-04**). |
+| C-08 | 🟡 | [`BolhaMensagem.kt:45`](BolhaMensagem.kt#L45) | A bolha tem largura máxima fixa de 300 dp: em celular deitado ou tablet ocupa pouco espaço, e em 360 dp quase não sobra margem. | Largura proporcional (≈ 80% da tela) com `BoxWithConstraints`. |
+| C-09 | 🟡 | [`ChatMedicoScreen.kt:74`](ChatMedicoScreen.kt#L74) | O chat do médico vazio fica **em branco** (o do paciente tem boas-vindas) e não há botão de voz nas duas telas (o protótipo tem). | Boas-vindas local para o médico (**RNF-05**); botão de microfone com o aviso "em breve" (**RNF-01**). |
+| C-10 | 🟡 | [`ChatViewModel.kt:199`](ChatViewModel.kt#L199) | Um erro no listener de mensagens **desabilita o chat de vez**, sem opção de tentar de novo. | Estado `Erro` com "Tentar de novo". |
+| C-11 | 🟡 | [`ChatViewModel.kt:137`](ChatViewModel.kt#L137) | O intervalo "hoje" do médico é calculado uma vez: depois da meia-noite, "Próximo paciente" e os contadores usam o dia anterior. | Recalcular o intervalo ao voltar à tela (mesma correção do H-05). |
+
+
+---
+
+## 4. Requisitos
 
 | ID | Requisito | Prioridade |
 |---|---|---|
@@ -117,17 +349,19 @@ data/repository/
 | RF-11 | Chips enviam a frase como mensagem | Must |
 | RF-12 | Médico: três contadores do dia no topo | Should |
 | RF-13 | Médico: tocar na fonte abre a Revisão | Should |
-| RF-14 | Botão de voz converte fala em texto | Could |
+| RF-14 | Botão de voz converte fala em texto | Could (nesta fase: aviso RNF-01) |
+| **RF-38 (novo)** | Mostrar "Goianinho está digitando…" por cerca de 1 segundo antes da resposta | Must |
 
 - **RN-03:** o Goianinho **nunca** afirma diagnóstico. Toda resposta sobre exame lembra que o médico confirma.
-- **RN-04:** respostas vêm de uma lista fixa "frase-gatilho → resposta". Sem gatilho, vai a resposta padrão.
+- **RN-04:** respostas vêm de uma lista fixa "frase-gatilho → resposta" (revisada pelo time). Sem gatilho, vai a resposta padrão.
 
-## 4. Dados no Firestore
+## 5. Dados no Firestore
 
 ```kotlin
-// data/model/Mensagem.kt (criado na fundação)
+// data/model/Mensagem.kt (compartilhado — o líder acrescenta donoId)
 data class Mensagem(
     @DocumentId val id: String = "",
+    val donoId: String = "",           // NOVO (v1.6): uid de quem conversa (paciente ou médico)
     val pacienteId: String = "",
     val medicoId: String = "",
     val autor: String = "usuario",     // "usuario" ou "goianinho"
@@ -137,205 +371,140 @@ data class Mensagem(
 )
 ```
 
-- `@DocumentId` preenche o `id` com o id do documento ao ler. Não é gravado como campo.
-- `@ServerTimestamp` faz o **servidor** preencher a hora, então a ordem das mensagens não depende do relógio do celular.
+**Por que `donoId`:** sem ele, o médico, ao buscar por `medicoId`, receberia as conversas de **todos** os pacientes. As regras do Firestore da v1.6 só deixam ler/criar mensagem com `donoId == uid` do usuário logado.
 
 ---
 
-## 5. Como implementar
+## 6. Como implementar (v1.6)
 
-Padrões das aulas **"Build a scrollable list"** (Unidade 3), **"Intro to state in Compose"** (Unidade 2) e **"Get realtime updates"** do Firebase (links na seção 8).
-
-### 5.1. A "IA" simulada — isolada numa função
+### 6.1. `ChatRepository` — `Flow` + `Result`
 
 ```kotlin
-object RespostasSimuladas {
-    data class Resposta(val texto: String, val fonte: String = "")
+class ChatRepository(private val db: FirebaseFirestore) {
+    private val col = db.collection(COL_MENSAGENS)
 
-    private val gatilhos = listOf(
-        "exame" to Resposta(
-            "Recebi seu exame e organizei os pontos principais num resumo. " +
-            "Enviei para o seu médico revisar — só ele confirma o resultado.",
-            fonte = "Hemograma_set2026.pdf · pág. 1, linhas 8–14"
-        ),
-        "consulta" to Resposta("O médico tem horários na quinta às 09:30 ou 14:00. Quer que eu reserve?"),
-        "horário" to Resposta("Posso ver os horários livres na aba Agenda ou reservar por aqui.")
-    )
-
-    fun gerarResposta(mensagem: String): Resposta =
-        gatilhos.firstOrNull { (palavra, _) -> mensagem.contains(palavra, ignoreCase = true) }?.second
-            ?: Resposta("Entendi. Vou organizar isso e te aviso. Qualquer decisão clínica fica com o seu médico.")
-}
-```
-
-**Por que isolar:** no futuro, a IA real entra **só aqui dentro**. A tela e o ViewModel não mudam.
-
-### 5.2. Repository
-
-```kotlin
-class MensagemRepository {
-    private val col = Firebase.firestore.collection("mensagens")
-
-    fun ouvir(pacienteId: String, onMudou: (List<Mensagem>) -> Unit): ListenerRegistration =
-        col.whereEqualTo("pacienteId", pacienteId)
+    fun ouvirConversa(donoId: String): Flow<List<Mensagem>> = callbackFlow {
+        val registro = col.whereEqualTo("donoId", donoId)
             .orderBy("criadaEm")
-            .addSnapshotListener { snap, _ ->
-                onMudou(snap?.toObjects(Mensagem::class.java).orEmpty())
+            .addSnapshotListener { snap, erro ->
+                if (erro != null) { close(erro); return@addSnapshotListener }
+                trySend(snap?.toObjects(Mensagem::class.java).orEmpty())
             }
+        awaitClose { registro.remove() }
+    }
 
-    fun enviar(mensagem: Mensagem) {
-        col.add(mensagem)
-        if (mensagem.autor == "usuario") {
-            val r = RespostasSimuladas.gerarResposta(mensagem.texto)
-            col.add(mensagem.copy(autor = "goianinho", texto = r.texto, fonte = r.fonte))
-        }
+    suspend fun gravar(mensagem: Mensagem): Result<Unit> = runCatching {
+        withTimeout(10_000) { col.add(mensagem.copy(id = "", criadaEm = null)).await() }
     }
 }
 ```
 
-> Essa consulta (`whereEqualTo` + `orderBy` em campos diferentes) pede **índice composto**. Na primeira execução, abra o link que aparece no Logcat e clique em "Criar índice".
+`gerarResposta(...)` continua em `RespostasSimuladas` — **é o único lugar que muda quando a IA for real**.
 
-### 5.3. Lista de mensagens com `LazyColumn`
+### 6.2. ViewModel — enviar, "digitando…" e falha sem perder o texto
 
 ```kotlin
-@Composable
-fun ChatConteudo(
-    mensagens: List<Mensagem>,
-    chips: List<String>,
-    onEnviar: (String) -> Unit,
-    onFonteClick: ((String) -> Unit)? = null      // só o médico passa algo aqui
-) {
-    var texto by rememberSaveable { mutableStateOf("") }
-    val listState = rememberLazyListState()
+data class ChatUiState(
+    val mensagens: List<Mensagem> = emptyList(),
+    val carregando: Boolean = true,        // primeira leitura do histórico
+    val enviando: Boolean = false,         // RNF-03
+    val digitando: Boolean = false,        // RF-38
+    val textoDevolvido: String? = null,    // falha: devolve o texto para o campo
+    val erro: String? = null,
+    val aviso: String? = null              // Snackbar (voz)
+)
 
-    // Rola para a última mensagem sempre que chega uma nova
-    LaunchedEffect(mensagens.size) {
-        if (mensagens.isNotEmpty()) listState.animateScrollToItem(mensagens.lastIndex)
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(mensagens, key = { it.id.ifEmpty { it.hashCode().toString() } }) { msg ->
-                BolhaMensagem(msg, onFonteClick)
+fun enviar(texto: String) {
+    val limpo = texto.trim()
+    if (limpo.isEmpty() || _uiState.value.enviando) return          // RNF-06 / clique duplo
+    viewModelScope.launch {
+        _uiState.update { it.copy(enviando = true, erro = null) }
+        val minha = Mensagem(donoId = uid, pacienteId = pacienteId, medicoId = medicoId, texto = limpo)
+        repo.gravar(minha)
+            .onFailure { e ->
+                Log.e("Goianinho", "enviar falhou", e)                // sem logar o texto (RNF-08)
+                _uiState.update { it.copy(enviando = false, textoDevolvido = limpo, erro = mensagemDeErro(e)) }
+                return@launch
             }
-        }
-
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(chips) { chip ->
-                SuggestionChip(onClick = { onEnviar(chip) }, label = { Text(chip) })
-            }
-        }
-
-        Row(
-            Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = texto,
-                onValueChange = { texto = it },
-                placeholder = { Text("Fale com o Goianinho…") },
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.weight(1f)
-            )
-            FilledIconButton(onClick = {
-                if (texto.isNotBlank()) { onEnviar(texto); texto = "" }
-            }) {
-                Icon(painterResource(R.drawable.ic_send), contentDescription = "Enviar mensagem")
-            }
-        }
+        _uiState.update { it.copy(digitando = true) }
+        delay(1_000)                                                  // RF-38
+        val r = RespostasSimuladas.gerarResposta(limpo, perfil, contextoAtual())
+        repo.gravar(minha.copy(autor = "goianinho", texto = r.texto, fonte = r.fonte))
+            .onFailure { e -> _uiState.update { it.copy(erro = mensagemDeErro(e)) } }
+        _uiState.update { it.copy(enviando = false, digitando = false) }
     }
 }
+
+fun onVozClick() = _uiState.update { it.copy(aviso = AVISO_VOZ) }     // RNF-01
 ```
 
-- `items(..., key = ...)` ajuda o Compose a não redesenhar a lista inteira a cada mensagem.
-- `Modifier.weight(1f)` faz a lista ocupar o espaço que sobra, deixando chips e campo fixos embaixo.
-- `rememberSaveable` mantém o texto digitado se o celular girar.
+Na tela, quando `textoDevolvido != null`, coloque-o de volta no campo (`texto = it`) e chame `vm.textoDevolvidoUsado()`.
 
-### 5.4. Bolha com card de fonte (RF-10 e RF-13)
+### 6.3. `ChatConteudo` — "digitando…", teclado e largura
 
 ```kotlin
-@Composable
-fun BolhaMensagem(msg: Mensagem, onFonteClick: ((String) -> Unit)?) {
-    val doUsuario = msg.autor == "usuario"
-    Box(Modifier.fillMaxWidth(), contentAlignment = if (doUsuario) Alignment.CenterEnd else Alignment.CenterStart) {
-        Surface(
-            color = if (doUsuario) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.widthIn(max = 300.dp)
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(msg.texto)
-                if (msg.fonte.isNotEmpty()) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = RoundedCornerShape(10.dp),
-                        onClick = { onFonteClick?.invoke(msg.fonte) },
-                        enabled = onFonteClick != null
-                    ) {
-                        Text("Fonte: ${msg.fonte}", style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(8.dp))
-                    }
-                }
-            }
+Column(Modifier.fillMaxSize().imePadding()) {                          // teclado não cobre o campo
+    LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+        items(state.mensagens, key = { it.id }) { msg -> BolhaMensagem(msg, onFonteClick) }
+        if (state.digitando) item(key = "digitando") {
+            Text("Goianinho está digitando…", style = MaterialTheme.typography.bodySmall)
         }
     }
+    // chips: enabled = !state.enviando
+    // campo: OutlinedTextField(maxLines = 4, ...) + botão Enviar (enabled = !state.enviando) + botão voz
 }
+
+// BolhaMensagem: largura proporcional em vez de 300.dp fixo
+BoxWithConstraints(Modifier.fillMaxWidth()) {
+    Surface(modifier = Modifier.widthIn(max = maxWidth * 0.8f).align(...)) { /* ... */ }
+}
+
+// Hora da bolha: criadaEm pode ser nulo no primeiro aviso
+val hora = msg.criadaEm?.let { formatarHora(it) } ?: "agora"
 ```
 
-### 5.5. Voz para texto (RF-14, opcional)
-
-```kotlin
-val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-    val falado = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-    if (!falado.isNullOrBlank()) onEnviar(falado)
-}
-// No botão do microfone:
-launcher.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-})
-```
-
-Usa o reconhecimento de voz do próprio Android, sem biblioteca extra.
+- `LaunchedEffect(state.mensagens.size, state.digitando)` rola até o fim quando chega mensagem ou aparece o "digitando…".
+- Com `items(key = { it.id })` não há mais mensagens duplicadas — **desde que** o listener seja removido no `awaitClose`.
 
 ---
 
-## 6. O que fica simulado
+## 7. O que fica simulado
 
-- Toda a inteligência do Goianinho (`RespostasSimuladas`).
-- A fonte citada é texto fixo de exemplo. Não use valores clínicos reais.
+- Toda a inteligência do Goianinho (`RespostasSimuladas`). A fonte citada usa nome real do documento com página/linha fictícias. Não use valores clínicos reais.
+- O "digitando…" é um `delay(1_000)`.
+- Voz: só o aviso "em breve".
 
-## 7. Critérios de aceite
+## 8. Critérios de aceite
 
+- [ ] **Todos os erros da seção "Erros encontrados" corrigidos (C-01 a C-11)**, cada um no seu commit `fix(...)`
 - [ ] Mensagem enviada aparece na hora e continua lá ao reabrir o app
-- [ ] Cada chip gera a resposta esperada
+- [ ] "Goianinho está digitando…" aparece ~1 s antes de cada resposta
+- [ ] Cada chip gera a resposta esperada; "oi" e "dor" têm resposta própria
 - [ ] Card de fonte aparece só nas respostas que citam documento
 - [ ] No médico, tocar na fonte abre a Revisão
-- [ ] Paciente e médico veem cada um a sua versão da tela
+- [ ] Médico **não** vê conversas dos pacientes, e paciente não vê a do médico (`donoId`)
+- [ ] Modo avião: o texto volta para o campo, aparece "Sem conexão…" e o app não fecha
+- [ ] Clique duplo em Enviar não duplica a mensagem
+- [ ] Botão de voz mostra o aviso "em breve"
+- [ ] Teclado não cobre o campo; funciona deitado e com fonte grande
 - [ ] Visual das duas telas igual ao protótipo
 
-## 8. Aulas e documentação do Google
+## 9. Aulas e documentação do Google
 
 | Tema | Onde estudar | Usar para |
 |---|---|---|
 | Estado em Compose | [Codelab: State in Jetpack Compose](https://developer.android.com/codelabs/jetpack-compose-state) | `remember`, `rememberSaveable`, state hoisting |
-| Listas | [Guia: Lists and grids](https://developer.android.com/develop/ui/compose/lists) | `LazyColumn`, `LazyRow`, `key`, scroll |
-| Lista na prática | [Codelab: Add a scrollable list](https://developer.android.com/codelabs/basic-android-kotlin-compose-training-add-scrollable-list) | Montar a lista de mensagens |
-| ViewModel | [Codelab: ViewModel and State in Compose](https://developer.android.com/codelabs/basic-android-kotlin-compose-viewmodel-and-state) | `ChatViewModel` com `StateFlow` |
-| Chips | [Guia: Chip](https://developer.android.com/develop/ui/compose/components/chip) | Ações rápidas |
+| UiState Carregando/Sucesso/Erro | [Codelab: Get data from the internet (Mars Photos)](https://developer.android.com/codelabs/basic-android-kotlin-compose-getting-data-internet) | Padrão de estado da v1.6 |
+| Injeção manual + Factory | [Codelab: Add repository and Manual DI](https://developer.android.com/codelabs/basic-android-kotlin-compose-add-repository) | `ChatRepository` vindo do `AppContainer` |
+| Flow e callbackFlow | [Guia: Kotlin flows on Android](https://developer.android.com/kotlin/flow) | `ouvirConversa` com `awaitClose` |
+| Coroutines | [Guia: Kotlin coroutines on Android](https://developer.android.com/kotlin/coroutines) | `viewModelScope`, `delay`, `withTimeout` |
+| Listas | [Guia: Lists and grids](https://developer.android.com/develop/ui/compose/lists) | `LazyColumn`, `key`, scroll |
+| Teclado e insets | [Guia: Window insets in Compose](https://developer.android.com/develop/ui/compose/layouts/insets) | `imePadding()` |
+| Snackbar | [Guia: Snackbar](https://developer.android.com/develop/ui/compose/components/snackbar) | Aviso do botão de voz |
 | Campos de texto | [Guia: Text fields](https://developer.android.com/develop/ui/compose/text/user-input) | Campo de mensagem |
 | Tempo real | [Firebase: Get realtime updates](https://firebase.google.com/docs/firestore/query-data/listen) | Histórico que atualiza sozinho |
 | Gravar dados | [Firebase: Add data](https://firebase.google.com/docs/firestore/manage-data/add-data) | `add()` e `@ServerTimestamp` |
-| Resultado de outra tela | [Guia: Get a result from an activity](https://developer.android.com/training/basics/intents/result) | Reconhecimento de voz |
-| Reconhecimento de voz | [Referência: RecognizerIntent](https://developer.android.com/reference/android/speech/RecognizerIntent) | Fala → texto |
+| Índices | [Firebase: Index types](https://firebase.google.com/docs/firestore/query-data/index-overview) | Índice `donoId` + `criadaEm` |
 
 ---
 
