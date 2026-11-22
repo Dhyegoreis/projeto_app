@@ -127,7 +127,7 @@ Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (pa
 3. Crie a `Factory` da sua ViewModel (Padrão 1) e use `viewModel(factory = ...)` na tela.
 4. Troque `traduzirErroAuth`/`traduzirErroFirestore` por `mensagemDeErro` nas suas ViewModels.
 
-> **Módulo 1 (Login):** a linha `val authRepository = AuthRepository(auth, db)` do `AppContainer` **já está pronta** (forma final). O `AuthRepository` já recebe `auth` e `db` no construtor (com `getInstance()` como valor padrão); falta só a `Factory` e a troca de `traduzirErroAuth` por `mensagemDeErro`.
+> **Módulo 1 (Login):** a linha `val authRepository = AuthRepository(auth, db)` do `AppContainer` **já está pronta** (forma final). O construtor do `AuthRepository` já aceita `(auth, db)`, mas ainda tem `getInstance()` como valor padrão. No PR de migração do Login: remova esses valores padrão (passo 1), crie a `Factory` e troque a criação da ViewModel (passo 3) e `traduzirErroAuth` por `mensagemDeErro` (passo 4).
 
 > **Médico de teste:** `MEDICO_TESTE_ID` em `data/Constantes.kt` pode estar com o texto provisório `COLOQUE_AQUI_O_UID_DO_MEDICO_TESTE` até o líder criar o médico de teste. Se for o caso, o vínculo do paciente novo (RN-12) não funciona ainda; avise o líder.
 >
@@ -137,11 +137,12 @@ Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (pa
 
 ```kotlin
 // data/AppContainer.kt (líder)
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos.
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     val authRepository = AuthRepository(auth, db)
-    val chatRepository = ChatRepository(db)
+    val chatRepository = MensagemRepository(db)
     val documentoRepository = DocumentoRepository(db)
     val agendaRepository = AgendaRepository(db)
 }

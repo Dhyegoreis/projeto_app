@@ -137,11 +137,12 @@ Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (pa
 
 ```kotlin
 // data/AppContainer.kt (líder)
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos.
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     val authRepository = AuthRepository(auth, db)
-    val chatRepository = ChatRepository(db)
+    val chatRepository = MensagemRepository(db)
     val documentoRepository = DocumentoRepository(db)
     val agendaRepository = AgendaRepository(db)
 }
@@ -366,7 +367,7 @@ viewModelScope.launch {
 | RF-12 | Médico: três contadores do dia no topo | Should |
 | RF-13 | Médico: tocar na fonte abre a Revisão | Should |
 | RF-14 | Botão de voz converte fala em texto | Could (nesta fase: aviso RNF-01) |
-| **RF-38 (novo)** | Mostrar "Goianinho está digitando…" por cerca de 1 segundo antes da resposta | Must |
+| **RF-38 (novo)** | Mostrar "Goianinho está digitando…" por cerca de 1 segundo antes da resposta | Should |
 
 - **RN-03:** o Goianinho **nunca** afirma diagnóstico. Toda resposta sobre exame lembra que o médico confirma.
 - **RN-04:** respostas vêm de uma lista fixa "frase-gatilho → resposta" (revisada pelo time). Sem gatilho, vai a resposta padrão.

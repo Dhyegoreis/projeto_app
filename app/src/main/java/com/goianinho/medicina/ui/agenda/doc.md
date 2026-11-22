@@ -137,11 +137,12 @@ Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (pa
 
 ```kotlin
 // data/AppContainer.kt (líder)
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos.
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     val authRepository = AuthRepository(auth, db)
-    val chatRepository = ChatRepository(db)
+    val chatRepository = MensagemRepository(db)
     val documentoRepository = DocumentoRepository(db)
     val agendaRepository = AgendaRepository(db)
 }
