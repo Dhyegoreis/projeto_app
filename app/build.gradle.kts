@@ -32,6 +32,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     buildFeatures {
         compose = true
     }
@@ -61,4 +64,5 @@ dependencies {
     implementation(libs.firebase.firestore)
 
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.coil.compose)
 }
