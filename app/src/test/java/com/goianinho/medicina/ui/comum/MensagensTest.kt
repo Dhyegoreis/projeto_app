@@ -77,6 +77,11 @@ class MensagensTest {
         )
     )
 
+    @Test fun codigoNaoMapeado_seguePelaCadeia() = assertEquals(
+        horario,
+        mensagemDeErro(FirebaseFirestoreException("tx", Code.ABORTED, HorarioOcupadoException()))
+    )
+
     @Test fun indiceFaltando_generica() = assertEquals(
         generica, mensagemDeErro(FirebaseFirestoreException("x", Code.FAILED_PRECONDITION))
     )

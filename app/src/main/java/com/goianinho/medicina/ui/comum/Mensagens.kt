@@ -35,15 +35,16 @@ fun mensagemDeErro(erro: Throwable): String {
             is FirebaseAuthUserCollisionException -> return "Este e-mail já tem uma conta. Tente entrar."
             is FirebaseNetworkException,
             is TimeoutCancellationException -> return MSG_SEM_REDE
-            is FirebaseFirestoreException -> return when (atual.code) {
-                Code.UNAVAILABLE, Code.DEADLINE_EXCEEDED -> MSG_SEM_REDE
-                Code.PERMISSION_DENIED -> "Você não tem acesso a esta informação."
+            is FirebaseFirestoreException -> when (atual.code) {
+                Code.UNAVAILABLE, Code.DEADLINE_EXCEEDED -> return MSG_SEM_REDE
+                Code.PERMISSION_DENIED -> return "Você não tem acesso a esta informação."
                 Code.FAILED_PRECONDITION -> {
                     // Índice faltando: a mensagem técnica traz o link para criá-lo no Logcat.
                     Log.e("Goianinho", "Índice do Firestore faltando: ${atual.message}")
-                    MSG_GENERICA
+                    return MSG_GENERICA
                 }
-                else -> MSG_GENERICA
+                // Código não mapeado: segue a cadeia, a causa pode ser reconhecida.
+                else -> Unit
             }
         }
         atual = atual.cause
