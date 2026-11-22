@@ -62,7 +62,7 @@ fun AgendaPacienteScreen(
         )
 
         uiState.bloqueio?.let { AvisoErro(it) }
-        uiState.avisoProximaConsulta?.let { AvisoErro(it) }
+        uiState.avisoProximaConsulta?.takeIf { it != uiState.bloqueio }?.let { AvisoErro(it) }
 
         uiState.mensagemErro?.let { erro ->
             AvisoErro(erro, onSumir = { viewModel.limparErroPaciente() })

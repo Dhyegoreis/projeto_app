@@ -62,7 +62,7 @@ fun ChatPacienteScreen() {
             )
         }
         state.bloqueio?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-        state.avisoContadores?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        state.avisoContadores?.takeIf { it != state.bloqueio }?.let { AvisoErro(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         state.erro?.let {
             AvisoErro(
                 it,
