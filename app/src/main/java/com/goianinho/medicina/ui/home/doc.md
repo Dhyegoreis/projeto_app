@@ -120,12 +120,12 @@ com/goianinho/medicina/
 
 Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (passo manual do líder):** médico de teste e horários de exemplo no Firestore. **Faça `git pull origin main` antes de começar.**
 
-**Estado da base (decisão B):** o líder entregou a base, mas **cada módulo migra o próprio código**. Hoje o `AppContainer` ainda cria `chatRepository = MensagemRepository()`, `documentoRepository = DocumentoRepository()` e `agendaRepository = AgendaRepository()` sem argumentos, e os módulos ainda usam `getInstance()` e `traduzirErroAuth`/`traduzirErroFirestore` (que continuam em `data/repository/`, intactos). Roteiro de migração do **seu** módulo:
+**Estado da base (decisão B):** o líder entregou a base, mas **cada módulo migra o próprio código**. Hoje o `AppContainer` ainda cria `chatRepository = MensagemRepository()`, `documentoRepository = DocumentoRepository()` e `agendaRepository = AgendaRepository()` sem argumentos, e os módulos ainda usam `getInstance()` e `traduzirErroAuth`/`traduzirErroFirestore` (que continuam em `data/repository/`, intactos).
 
 O Início **não tem repositório próprio**: ele consome `authRepository`, `documentoRepository` e `agendaRepository`. Por isso o seu roteiro é mais curto:
 
-1. Não há repositório nem linha do `AppContainer` para migrar; essas são dos outros módulos.
-2. A `Factory` da `HomeViewModel` recebe os repositórios de que precisa a partir de `(application as GoianinhoApp).container` (Padrão 1) e a tela usa `viewModel(factory = ...)`.
+1. Não há repositório nem linha do `AppContainer` para migrar no Início: o `AuthRepository` é migrado no Login (Módulo 1, mesmo responsável do Início), e `documentoRepository` e `agendaRepository` são migrados pelos Módulos 3 e 4.
+2. A `Factory` da `HomeViewModel` recebe os repositórios de que precisa a partir de `(application as GoianinhoApp).container` (Padrão 1) e a tela usa `viewModel(factory = ...)`. Atenção: hoje a `HomeViewModel` usa as APIs com callback do `DocumentoRepository` e do `AgendaRepository`; quando os Módulos 3 e 4 passarem esses repositórios para `Flow`/`Result`, o Início precisa se adaptar. Por isso migre o Início depois desses PRs (ou adapte junto com eles).
 3. As telas usam `TelaCarregando`, `TelaErro` e `EstadoVazio` (`ui/comum/`).
 4. Troque `traduzirErroAuth`/`traduzirErroFirestore` por `mensagemDeErro` na ViewModel.
 
@@ -137,12 +137,12 @@ O Início **não tem repositório próprio**: ele consome `authRepository`, `doc
 
 ```kotlin
 // data/AppContainer.kt (líder)
-// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos.
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos (o de chat ainda se chama MensagemRepository).
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     val authRepository = AuthRepository(auth, db)
-    val chatRepository = MensagemRepository(db)
+    val chatRepository = ChatRepository(db)
     val documentoRepository = DocumentoRepository(db)
     val agendaRepository = AgendaRepository(db)
 }

@@ -137,12 +137,12 @@ Mais: Coil e coroutines no Gradle e campo `donoId` em `Mensagem`. **Pendente (pa
 
 ```kotlin
 // data/AppContainer.kt (líder)
-// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos.
+// Forma final, DEPOIS da migração dos 4 módulos. Hoje os repositórios de chat, documentos e agenda ainda são criados sem argumentos (o de chat ainda se chama MensagemRepository).
 class AppContainer {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
     val authRepository = AuthRepository(auth, db)
-    val chatRepository = MensagemRepository(db)
+    val chatRepository = ChatRepository(db)
     val documentoRepository = DocumentoRepository(db)
     val agendaRepository = AgendaRepository(db)
 }
@@ -330,7 +330,7 @@ O paciente marca e acompanha consultas; o médico vê o dia com um briefing pron
 9. **Estado vazio (RNF-05):** dia sem horários → *"Sem horários livres neste dia. Escolha outro dia."*; médico sem consultas → *"Nenhuma consulta hoje."*
 10. **Responsivo (RNF-04):** troque a grade de altura fixa por `FlowRow` (ou grade com nº de colunas pelo espaço: `GridCells.Adaptive(minSize = 96.dp)`) dentro de uma tela com scroll; `widthIn(max = 600.dp)` deitado.
 
-> **Regras do Firestore (seção 11):** em `horarios` o app só pode mudar `livre` de `true` para `false`; `consultas` só pode ser criada com `pacienteId == uid` e só é lida por quem é o paciente ou o médico dela. Por isso **toda** consulta precisa filtrar por `pacienteId` ou `medicoId`.
+> **Regras do Firestore (seção 11):** em `horarios` o app só pode mudar `livre` de `true` para `false`, e só o paciente vinculado ao médico dono do horário pode fazer isso (RN-08); `consultas` só pode ser criada com `pacienteId == uid` e só é lida por quem é o paciente ou o médico dela. Por isso **toda** consulta precisa filtrar por `pacienteId` ou `medicoId`.
 
 ## Erros encontrados no código atual (corrigir nesta versão)
 

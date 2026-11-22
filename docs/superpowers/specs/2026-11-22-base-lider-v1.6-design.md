@@ -176,10 +176,10 @@ A base continua sendo o arquivo atual (`logado()`, `eu()`, `meuPerfil()`, `souMe
     - se quem grava é paciente: `pacienteId == eu()` e `medicoId == meuPerfil().medicoId`;
     - se quem grava é médico (conversa dele com o Goianinho): `medicoId == eu()` e `pacienteId == ""`.
   - **update/delete:** proibido, **de propósito**. Nenhuma tela edita mensagem; isso precisa ficar escrito como decisão.
-- **documentos:** como hoje, que já atende RN-06 e RN-07. Acrescentar a RN-13 no update: `status == "corrigido"` exige `observacao` não vazia.
+- **documentos:** como hoje, que já atende RN-06 e RN-07. Acrescentar a RN-13 no update: `status == "corrigido"` exige `observacao` não vazia (ignorando espaços, `trim()`).
 - **horarios:**
   - read se logado;
-  - update de paciente só `livre: true → false`, mudando apenas `livre` (RN-08);
+  - update de paciente só `livre: true → false`, mudando apenas `livre`, e só o paciente vinculado ao médico do horário (`resource.data.medicoId == meuPerfil().medicoId`) (RN-08);
   - o médico mantém create/update/delete dos próprios horários (já existe e não contradiz a RN-09, que trata do cadastro manual).
 - **consultas:**
   - read e create como hoje;
