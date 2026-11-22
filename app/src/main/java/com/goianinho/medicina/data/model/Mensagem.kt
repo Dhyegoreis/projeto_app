@@ -7,6 +7,7 @@ import com.google.firebase.firestore.ServerTimestamp
 // Coleção "mensagens". Dono: Módulo 2.
 data class Mensagem(
     @DocumentId val id: String = "",
+    val donoId: String = "",           // uid de quem conversa (paciente ou médico). Novo na v1.6.
     val pacienteId: String = "",
     val medicoId: String = "",
     val autor: String = "usuario",     // "usuario" ou "goianinho"
