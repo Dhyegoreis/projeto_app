@@ -1,18 +1,19 @@
 package com.goianinho.medicina.ui.agenda
 
-import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.goianinho.medicina.ui.comum.TelaCarregando
+import com.goianinho.medicina.ui.comum.TelaErro
 import com.goianinho.medicina.ui.theme.AzulNoite
 import com.goianinho.medicina.ui.theme.Branco
 import com.goianinho.medicina.ui.theme.CinzaBorda
@@ -43,40 +47,55 @@ import com.goianinho.medicina.ui.theme.VerdePrincipal
 @Composable
 fun AgendaPacienteScreen(
     onEntrarNaChamada: () -> Unit,
-    viewModel: AgendaViewModel = viewModel()
+    viewModel: AgendaViewModel = viewModel(factory = AgendaViewModel.Factory)
 ) {
     val uiState by viewModel.uiStatePaciente.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Text(
-            "Agenda",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = AzulNoite
+    when (val estado = uiState) {
+        AgendaPacienteUiState.Carregando -> TelaCarregando()
+        is AgendaPacienteUiState.Erro -> TelaErro(estado.mensagem, onTentarDeNovo = viewModel::tentarDeNovoHorarios)
+        is AgendaPacienteUiState.Sucesso -> AgendaPacienteConteudo(
+            estado = estado,
+            onEntrarNaChamada = onEntrarNaChamada,
+            onDiaClick = viewModel::selecionarDia,
+            onHorarioClick = viewModel::selecionarHorario,
+            onConfirmar = viewModel::confirmarReserva,
+            onTentarDeNovoHorarios = viewModel::tentarDeNovoHorarios
         )
+    }
+}
 
-        uiState.bloqueio?.let { AvisoErro(it) }
-        uiState.avisoProximaConsulta?.takeIf { it != uiState.bloqueio }?.let { AvisoErro(it) }
+@Composable
+private fun AgendaPacienteConteudo(
+    estado: AgendaPacienteUiState.Sucesso,
+    onEntrarNaChamada: () -> Unit,
+    onDiaClick: (String) -> Unit,
+    onHorarioClick: (HorarioUi) -> Unit,
+    onConfirmar: () -> Unit,
+    onTentarDeNovoHorarios: () -> Unit
+) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 600.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text(
+                "Agenda",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = AzulNoite
+            )
 
-        uiState.mensagemErro?.let { erro ->
-            AvisoErro(erro, onSumir = { viewModel.limparErroPaciente() })
-        }
+            CardProximaConsulta(
+                medicoNome = estado.medicoNome,
+                tipoEData = "Teleconsulta · ${estado.proximaConsulta?.data ?: "Qui, 24/09"} · ${estado.proximaConsulta?.hora ?: "09:30"}",
+                onEntrarNaChamada = onEntrarNaChamada
+            )
 
-        CardProximaConsulta(
-            medicoNome = uiState.medicoNome,
-            temProximaConsulta = uiState.temProximaConsulta,
-            tipoEData = "${uiState.proximaConsultaTipo} · ${uiState.proximaConsultaData} · ${uiState.proximaConsultaHora}",
-            onEntrarNaChamada = onEntrarNaChamada
-        )
-
-        // Com bloqueio, só o aviso e o card de próxima consulta aparecem
-        if (uiState.bloqueio == null) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     "Marcar nova consulta",
@@ -85,9 +104,9 @@ fun AgendaPacienteScreen(
                     color = AzulNoite
                 )
                 SeletorDeDias(
-                    dias = uiState.dias,
-                    diaSelecionado = uiState.diaSelecionado,
-                    onDiaClick = viewModel::selecionarDia
+                    dias = estado.dias,
+                    diaSelecionado = estado.diaSelecionado,
+                    onDiaClick = onDiaClick
                 )
             }
 
@@ -98,38 +117,46 @@ fun AgendaPacienteScreen(
                     fontWeight = FontWeight.Bold,
                     color = AzulNoite
                 )
-                if (uiState.horarios.isEmpty()) {
-                    Text(
-                        "Nenhum horário livre nesse dia.",
+                when {
+                    estado.horariosCarregando -> CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+                    estado.horariosErro != null -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(estado.horariosErro, color = MaterialTheme.colorScheme.error)
+                        Button(onClick = onTentarDeNovoHorarios) { Text("Tentar de novo") }
+                    }
+                    estado.horarios.isEmpty() -> Text(
+                        "Sem horários livres neste dia. Escolha outro dia.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = CinzaTexto
                     )
-                } else {
-                    GradeDeHorarios(
-                        horarios = uiState.horarios,
-                        horarioSelecionadoId = uiState.horarioSelecionadoId,
-                        onHorarioClick = viewModel::selecionarHorario
+                    else -> GradeDeHorarios(
+                        horarios = estado.horarios,
+                        horarioSelecionadoId = estado.horarioSelecionadoId,
+                        reservando = estado.reservando,
+                        onHorarioClick = onHorarioClick
                     )
                 }
             }
 
-            val horario = uiState.horarioSelecionado
+            val horario = estado.horarioSelecionado
             Button(
-                onClick = viewModel::confirmarReserva,
-                enabled = horario != null && !uiState.reservando,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                onClick = onConfirmar,
+                enabled = horario != null && !estado.reservando,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AzulNoite, contentColor = Branco)
             ) {
                 Text(
                     when {
-                        uiState.reservando -> "Reservando..."
-                        horario != null -> "Confirmar ${uiState.diaSelecionadoRotulo} às ${horario.hora}"
+                        estado.reservando -> "Reservando..."
+                        horario != null -> "Confirmar ${estado.diaSelecionadoRotulo} às ${horario.hora}"
                         else -> "Escolha um horário"
                     },
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            estado.aviso?.let { Text(it, color = VerdePrincipal, style = MaterialTheme.typography.bodySmall) }
+            estado.erroReserva?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
             Text(
                 "Prefere falar? Diga ao Goianinho \u201cmarca pra mim na sexta à tarde\u201d na aba Assistente.",
@@ -139,10 +166,10 @@ fun AgendaPacienteScreen(
         }
     }
 }
+
 @Composable
 private fun CardProximaConsulta(
     medicoNome: String,
-    temProximaConsulta: Boolean,
     tipoEData: String,
     onEntrarNaChamada: () -> Unit
 ) {
@@ -159,37 +186,28 @@ private fun CardProximaConsulta(
                 letterSpacing = 1.sp,
                 color = Branco.copy(alpha = 0.85f)
             )
-            if (!temProximaConsulta) {
-                Text(
-                    "Nenhuma consulta marcada",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Branco
-                )
-            } else {
-                Text(
-                    "Dr. $medicoNome",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Branco
-                )
-                Text(tipoEData, style = MaterialTheme.typography.bodyMedium, color = Branco.copy(alpha = 0.9f))
+            Text(
+                nomeDoMedicoExibicao(medicoNome),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Branco
+            )
+            Text(tipoEData, style = MaterialTheme.typography.bodyMedium, color = Branco.copy(alpha = 0.9f))
 
-                Button(
-                    onClick = onEntrarNaChamada,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Branco, contentColor = VerdePrincipal)
-                ) {
-                    Text("\uD83C\uDFA5  Entrar na chamada", fontWeight = FontWeight.Bold)
-                }
-
-                Text(
-                    "O Goianinho te lembra 1 hora antes pelo WhatsApp.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Branco.copy(alpha = 0.85f)
-                )
+            Button(
+                onClick = onEntrarNaChamada,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Branco, contentColor = VerdePrincipal)
+            ) {
+                Text("\uD83C\uDFA5  Entrar na chamada", fontWeight = FontWeight.Bold)
             }
+
+            Text(
+                "O Goianinho te lembra 1 hora antes pelo WhatsApp.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Branco.copy(alpha = 0.85f)
+            )
         }
     }
 }
@@ -201,12 +219,12 @@ private fun SeletorDeDias(
     onDiaClick: (String) -> Unit
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        dias.forEach { dia ->
+        dias.take(4).forEach { dia ->
             val selecionado = dia.data == diaSelecionado
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .height(64.dp)
+                    .heightIn(min = 64.dp)
                     .background(
                         color = if (selecionado) VerdePrincipal else Branco,
                         shape = RoundedCornerShape(14.dp)
@@ -237,23 +255,24 @@ private fun SeletorDeDias(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GradeDeHorarios(
     horarios: List<HorarioUi>,
     horarioSelecionadoId: String?,
+    reservando: Boolean,
     onHorarioClick: (HorarioUi) -> Unit
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.height(112.dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
-        items(horarios, key = { it.id }) { horario ->
+        horarios.forEach { horario ->
             val selecionado = horario.id == horarioSelecionadoId
             Column(
                 modifier = Modifier
-                    .height(52.dp)
+                    .heightIn(min = 48.dp)
                     .background(
                         color = if (selecionado) VerdeClaro else Branco,
                         shape = RoundedCornerShape(12.dp)
@@ -263,13 +282,14 @@ private fun GradeDeHorarios(
                         color = if (selecionado) VerdePrincipal else CinzaBorda,
                         shape = RoundedCornerShape(12.dp)
                     )
-                    .clickable(enabled = horario.disponivel) { onHorarioClick(horario) },
+                    .clickable(enabled = !reservando) { onHorarioClick(horario) }
+                    .padding(horizontal = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     horario.hora,
-                    color = if (horario.disponivel) AzulNoite else CinzaTexto,
+                    color = AzulNoite,
                     fontWeight = if (selecionado) FontWeight.Bold else FontWeight.Normal
                 )
             }

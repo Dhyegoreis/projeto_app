@@ -21,5 +21,5 @@ class AppContainer {
     val authRepository = AuthRepository(auth, db)
     val chatRepository = MensagemRepository()
     val documentoRepository = DocumentoRepository()
-    val agendaRepository = AgendaRepository()
+    val agendaRepository = AgendaRepository(db)
 }

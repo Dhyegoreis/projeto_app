@@ -2,420 +2,304 @@ package com.goianinho.medicina.ui.agenda
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.goianinho.medicina.GoianinhoApp
+import com.goianinho.medicina.data.MEDICO_TESTE_ID
 import com.goianinho.medicina.data.model.Consulta
+import com.goianinho.medicina.data.model.Documento
 import com.goianinho.medicina.data.model.Horario
 import com.goianinho.medicina.data.repository.AgendaRepository
-import com.goianinho.medicina.data.repository.AuthRepository
 import com.goianinho.medicina.data.repository.DocumentoRepository
 import com.goianinho.medicina.ui.comum.consultaDoMomento
-import com.goianinho.medicina.ui.comum.rotuloDaConsulta
+import com.goianinho.medicina.ui.comum.mensagemDeErro
 import com.google.firebase.Timestamp
-import com.google.firebase.firestore.ListenerRegistration
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-// Um dia do seletor de dias da Agenda do paciente
-data class DiaAgenda(
-    val data: String,       // "2026-10-20" — identifica o dia (RF-24)
-    val diaSemana: String,  // "Ter"
-    val diaMes: String      // "20"
-)
+// ---------- Modelos de UI ----------
 
-// Um horário da grade (RF-24 e RF-25)
-data class HorarioUi(
-    val id: String,
-    val hora: String,
-    val disponivel: Boolean = true
-)
+data class DiaAgenda(val data: String, val diaSemana: String, val diaMes: String)
 
-// Estado da tela Agenda do paciente
-data class AgendaPacienteUiState(
-    val medicoNome: String = "",
-    val temProximaConsulta: Boolean = false,
-    val proximaConsultaTipo: String = "",
-    val proximaConsultaData: String = "",
-    val proximaConsultaHora: String = "",
-    val dias: List<DiaAgenda> = emptyList(),
-    val diaSelecionado: String = "",
-    val horarios: List<HorarioUi> = emptyList(),
-    val horarioSelecionadoId: String? = null,
-    val reservando: Boolean = false,
-    val bloqueio: String? = null,       // permanente e esconde a marcação: sessão, perfil, sem médico, erro dos horários
-    val avisoProximaConsulta: String? = null, // permanente, sem esconder a marcação: erro da próxima consulta
-    val mensagemErro: String? = null    // passageiro: falha ao reservar
-) {
-    val horarioSelecionado: HorarioUi?
-        get() = horarios.firstOrNull { it.id == horarioSelecionadoId }
+// A-01: o horário carrega a própria data/instante — a reserva nunca usa o estado "atual" da tela
+data class HorarioUi(val id: String, val hora: String, val data: String, val instante: Date)
 
-    val diaSelecionadoRotulo: String
-        get() = dias.firstOrNull { it.data == diaSelecionado }
-            ?.let { "${it.diaSemana}, ${it.diaMes}" } ?: ""
-}
+data class ProximaConsultaUi(val data: String, val hora: String)
 
-// Status do resumo do Goianinho para a consulta, espelhando o Módulo 3
-enum class StatusResumoConsulta(val rotulo: String) {
-    SEM_EXAME("Sem exames novos"),
-    AGUARDANDO_MEDICO("Resumo aguardando você"),
-    CONFIRMADO("Confirmado")
-}
-
-// Uma consulta na lista "Próximas" da Agenda do dia (médico)
 data class ConsultaProximaUi(
     val hora: String,
     val pacienteNome: String,
-    val status: StatusResumoConsulta,
+    val resumoPendente: Boolean,
     val dicaEngajamento: String
 )
 
-// Estado da tela Agenda do dia (médico)
-data class AgendaMedicoUiState(
-    val diaRotulo: String = "",
-    val totalConsultas: Int = 0,
-    val temConsultaAtual: Boolean = false,
-    val pacienteAtualNome: String = "",
-    val rotuloAtual: String = "",      // "AGORA" | "PRÓXIMA"
-    val horaAtual: String = "",
-    val briefing: String = "",
-    val bloqueio: String? = null,       // permanente: sessão, perfil, erro de listener
-    val proximas: List<ConsultaProximaUi> = emptyList()
+data class ConsultaAtualUi(
+    val hora: String,
+    val pacienteNome: String,
+    val resumoPendente: Boolean,
+    val briefing: String
 )
 
-class AgendaViewModel(
-    private val auth: AuthRepository = AuthRepository()
-) : ViewModel() {
+// ---------- Estado da Agenda do paciente ----------
 
-    private val repository = AgendaRepository()
-    private val documentoRepository = DocumentoRepository()
-
-    // Preenchidos a partir do usuário logado (RN-09)
-    private var medicoId = ""
-    private var pacienteId = ""
-
-    private val _uiStatePaciente = MutableStateFlow(AgendaPacienteUiState())
-    val uiStatePaciente: StateFlow<AgendaPacienteUiState> = _uiStatePaciente.asStateFlow()
-
-    private val _uiStateMedico = MutableStateFlow(AgendaMedicoUiState())
-    val uiStateMedico: StateFlow<AgendaMedicoUiState> = _uiStateMedico.asStateFlow()
-
-    private var listenerHorarios: ListenerRegistration? = null
-    private var listenerProximaConsulta: ListenerRegistration? = null
-    private var listenerConsultasDoDia: ListenerRegistration? = null
-    private var listenerPendentes: ListenerRegistration? = null
-
-    // Dados do médico: últimas consultas do dia, pacientes com resumo pendente e cache de nomes
-    private var consultasDoDia: List<Consulta> = emptyList()
-    private var horariosRecebidos: List<Horario> = emptyList()
-    private var diaDosHorarios = ""
-    private var pacientesComPendencia: Set<String> = emptySet()
-    private val nomesPacientes = mutableMapOf<String, String>()
-    private val canaisPacientes = mutableMapOf<String, String>()
-    private val nomesEmBusca = mutableSetOf<String>()
-
-    init {
-        val dias = proximosDias(4)
-        _uiStatePaciente.update { it.copy(dias = dias, diaSelecionado = dias.first().data) }
-        _uiStateMedico.update { it.copy(diaRotulo = rotuloDeHoje()) }
-
-        val uid = auth.usuarioLogadoUid
-        if (uid == null) {
-            definirErro("Sessão expirada. Entre novamente.")
-        } else {
-            viewModelScope.launch {
-                try {
-                    val usuario = auth.buscarUsuario(uid)
-                    if (usuario.perfil == "medico") {
-                        iniciarComoMedico(uid)
-                    } else {
-                        iniciarComoPaciente(uid, usuario.medicoId)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.e("Goianinho", "Agenda: falha ao buscar o perfil", e)
-                    definirErro("Não foi possível carregar seu perfil.")
-                }
-            }
-        }
-    }
-
-    // Sessão ou perfil: o problema continua valendo, então o aviso é fixo
-    private fun definirErro(mensagem: String) {
-        _uiStatePaciente.update { it.copy(bloqueio = mensagem) }
-        _uiStateMedico.update { it.copy(bloqueio = mensagem) }
-    }
-
-    // Erro do listener de horários: a grade fica vazia enquanto o problema existir, então o aviso é fixo
-    private fun erroPaciente(mensagem: String) {
-        _uiStatePaciente.update { it.copy(bloqueio = mensagem) }
-    }
-
-    // Erro do listener de próxima consulta: aviso fixo, mas a marcação continua liberada
-    private fun erroProximaConsulta(mensagem: String) {
-        _uiStatePaciente.update { it.copy(avisoProximaConsulta = mensagem) }
-    }
-
-    private fun erroMedico(mensagem: String) {
-        _uiStateMedico.update { it.copy(bloqueio = mensagem) }
-    }
-
-    fun limparErroPaciente() {
-        _uiStatePaciente.update { it.copy(mensagemErro = null) }
-    }
-
-    private fun iniciarComoPaciente(uid: String, vinculado: String) {
-        pacienteId = uid
-        medicoId = vinculado
-        if (vinculado.isEmpty()) {
-            _uiStatePaciente.update {
-                it.copy(bloqueio = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.")
-            }
-            return
-        }
-        _uiStatePaciente.update { it.copy(bloqueio = null) }
-        ouvirHorariosDoDia(_uiStatePaciente.value.diaSelecionado)
-        ouvirProximaConsulta()
-        buscarNomeDoMedico(vinculado)
-        // Reaplica o filtro de horários que já passaram sem nova leitura
-        viewModelScope.launch {
-            while (isActive) {
-                delay(INTERVALO_RECALCULO_MS)
-                aplicarHorarios()
-            }
-        }
-    }
-
-    private fun iniciarComoMedico(uid: String) {
-        medicoId = uid
-        _uiStateMedico.update { it.copy(bloqueio = null) }
-        ouvirPendentes()
-        ouvirConsultasDeHoje()
-        // Reavalia AGORA/PRÓXIMA com o passar do tempo, sem nova leitura
-        viewModelScope.launch {
-            while (isActive) {
-                delay(INTERVALO_RECALCULO_MS)
-                atualizarAgendaDoMedico()
-            }
-        }
-    }
-
-    private fun buscarNomeDoMedico(id: String) {
-        viewModelScope.launch {
-            try {
-                val nome = auth.buscarUsuario(id).nome
-                _uiStatePaciente.update { it.copy(medicoNome = nome) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e("Goianinho", "Agenda: falha ao buscar o nome do médico", e)
-            }
-        }
-    }
-
-    fun selecionarDia(data: String) {
-        _uiStatePaciente.update { it.copy(diaSelecionado = data, horarioSelecionadoId = null) }
-        if (medicoId.isNotEmpty()) ouvirHorariosDoDia(data)
-    }
-
-    fun selecionarHorario(horario: HorarioUi) {
-        if (!horario.disponivel) return
-        _uiStatePaciente.update { it.copy(horarioSelecionadoId = horario.id) }
-    }
-
-    fun confirmarReserva() {
-        if (pacienteId.isEmpty() || medicoId.isEmpty()) {
-            _uiStatePaciente.update {
-                it.copy(mensagemErro = "Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.")
-            }
-            return
-        }
-        val estado = _uiStatePaciente.value
-        val horarioSelecionado = estado.horarioSelecionado ?: return
-        val dataHora = horarioParaTimestamp(estado.diaSelecionado, horarioSelecionado.hora) ?: return
-        if (dataHora.toDate().time < System.currentTimeMillis()) {
-            _uiStatePaciente.update { it.copy(mensagemErro = "Esse horário já passou.") }
-            return
-        }
-
-        _uiStatePaciente.update { it.copy(reservando = true, mensagemErro = null) }
-
-        repository.reservar(
-            horario = Horario(
-                id = horarioSelecionado.id,
-                medicoId = medicoId,
-                data = estado.diaSelecionado,
-                hora = horarioSelecionado.hora
-            ),
-            pacienteId = pacienteId,
-            dataHora = dataHora,
-            onSucesso = {
-                _uiStatePaciente.update { it.copy(reservando = false, horarioSelecionadoId = null) }
-            },
-            onErro = { mensagem ->
-                _uiStatePaciente.update { it.copy(reservando = false, mensagemErro = mensagem) }
-            }
-        )
-    }
-
-    private fun ouvirHorariosDoDia(data: String) {
-        listenerHorarios?.remove()
-        listenerHorarios = repository.ouvirHorariosLivres(medicoId, data, onErro = ::erroPaciente) { horarios ->
-            horariosRecebidos = horarios
-            diaDosHorarios = data
-            aplicarHorarios()
-        }
-    }
-
-    // Hoje, esconde os horários que já passaram (reaplicado a cada minuto sobre a última lista)
-    private fun aplicarHorarios() {
-        val agora = System.currentTimeMillis()
-        val data = diaDosHorarios
-        _uiStatePaciente.update {
-            it.copy(
-                horarios = horariosRecebidos
-                    .filter { h ->
-                        val dataHora = horarioParaTimestamp(data, h.hora)
-                        dataHora == null || dataHora.toDate().time >= agora
-                    }
-                    .map { h -> HorarioUi(id = h.id, hora = h.hora) }
-            )
-        }
-    }
-
-    private fun ouvirProximaConsulta() {
-        listenerProximaConsulta?.remove()
-        listenerProximaConsulta = repository.ouvirProximaConsulta(pacienteId, onErro = ::erroProximaConsulta) { consulta ->
-            val dataHora = consulta?.dataHora
-            _uiStatePaciente.update {
-                if (consulta != null && dataHora != null) {
-                    it.copy(
-                        temProximaConsulta = true,
-                        proximaConsultaTipo = consulta.tipo.replaceFirstChar { c -> c.uppercase() },
-                        proximaConsultaData = formatarDiaSemanaEData(dataHora.toDate()),
-                        proximaConsultaHora = formatarHora(dataHora.toDate())
-                    )
-                } else {
-                    it.copy(
-                        temProximaConsulta = false,
-                        proximaConsultaTipo = "",
-                        proximaConsultaData = "",
-                        proximaConsultaHora = ""
-                    )
-                }
-            }
-        }
-    }
-
-    private fun ouvirPendentes() {
-        listenerPendentes?.remove()
-        listenerPendentes = documentoRepository.ouvirPendentes(medicoId, onErro = ::erroMedico) { documentos ->
-            pacientesComPendencia = documentos.map { it.pacienteId }.toSet()
-            atualizarAgendaDoMedico()
-        }
-    }
-
-    private fun ouvirConsultasDeHoje() {
-        val (inicio, fim) = intervaloDeHoje()
-        listenerConsultasDoDia?.remove()
-        listenerConsultasDoDia = repository.ouvirConsultasDoDia(medicoId, inicio, fim, onErro = ::erroMedico) { consultas ->
-            consultasDoDia = consultas.sortedBy { it.dataHora?.seconds ?: Long.MAX_VALUE }
-            consultasDoDia.map { it.pacienteId }.distinct().forEach(::buscarNomeDoPaciente)
-            atualizarAgendaDoMedico()
-        }
-    }
-
-    // Busca o nome uma única vez por paciente (cache + controle de buscas em andamento)
-    private fun buscarNomeDoPaciente(id: String) {
-        if (id.isEmpty() || nomesPacientes.containsKey(id) || !nomesEmBusca.add(id)) return
-        viewModelScope.launch {
-            try {
-                val paciente = auth.buscarUsuario(id)
-                canaisPacientes[id] = paciente.canalPreferido
-                nomesPacientes[id] = paciente.nome
-                atualizarAgendaDoMedico()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e("Goianinho", "Agenda: falha ao buscar o nome do paciente", e)
-            } finally {
-                nomesEmBusca.remove(id)
-            }
-        }
-    }
-
-    // Dica de engajamento (RF-29) a partir do canal preferido do paciente
-    private fun dicaDoCanal(canal: String): String = when (canal) {
-        "whatsapp" -> "Prefere contato pelo WhatsApp."
-        "ligacao" -> "Prefere receber ligação."
-        "app" -> "Prefere falar pelo app."
-        else -> "Confirme com o paciente o melhor canal de contato."
-    }
-
-    private fun atualizarAgendaDoMedico() {
-        // Canceladas não contam; "atual" é a primeira que ainda não terminou (30 min)
-        val ordenadas = consultasDoDia.filter { it.status != "cancelada" }
-        val agora = Date()
-        val atual = consultaDoMomento(ordenadas, agora)
-        val restantes = if (atual != null) ordenadas.dropWhile { it !== atual }.drop(1) else emptyList()
-        val proximas = restantes.map { consulta ->
-            val pendente = consulta.pacienteId in pacientesComPendencia
-            ConsultaProximaUi(
-                hora = consulta.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
-                pacienteNome = nomesPacientes[consulta.pacienteId].orEmpty(),
-                status = if (pendente) StatusResumoConsulta.AGUARDANDO_MEDICO
-                else StatusResumoConsulta.SEM_EXAME,
-                dicaEngajamento = dicaDoCanal(canaisPacientes[consulta.pacienteId].orEmpty())
-            )
-        }
-        _uiStateMedico.update { estadoAtual ->
-            if (atual != null) {
-                val pendente = atual.pacienteId in pacientesComPendencia
-                estadoAtual.copy(
-                    totalConsultas = ordenadas.size,
-                    temConsultaAtual = true,
-                    rotuloAtual = rotuloDaConsulta(atual, agora),
-                    pacienteAtualNome = nomesPacientes[atual.pacienteId].orEmpty(),
-                    horaAtual = atual.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
-                    briefing = if (pendente) "Resumo de exames aguardando sua confirmação."
-                    else "Sem exames novos para revisar.",
-                    proximas = proximas
-                )
-            } else {
-                estadoAtual.copy(
-                    totalConsultas = ordenadas.size,
-                    temConsultaAtual = false,
-                    pacienteAtualNome = "",
-                    rotuloAtual = "",
-                    horaAtual = "",
-                    briefing = "",
-                    proximas = emptyList()
-                )
-            }
-        }
-    }
-
-    override fun onCleared() {
-        listenerHorarios?.remove()
-        listenerProximaConsulta?.remove()
-        listenerConsultasDoDia?.remove()
-        listenerPendentes?.remove()
-        super.onCleared()
+sealed interface AgendaPacienteUiState {
+    data object Carregando : AgendaPacienteUiState
+    data class Erro(val mensagem: String) : AgendaPacienteUiState
+    data class Sucesso(
+        val medicoNome: String,
+        val proximaConsulta: ProximaConsultaUi?,
+        val dias: List<DiaAgenda>,
+        val diaSelecionado: String,
+        val horariosCarregando: Boolean,
+        val horariosErro: String?,
+        val horarios: List<HorarioUi>,
+        val horarioSelecionadoId: String?,
+        val reservando: Boolean,
+        val aviso: String?,
+        val erroReserva: String?
+    ) : AgendaPacienteUiState {
+        val horarioSelecionado: HorarioUi?
+            get() = horarios.firstOrNull { it.id == horarioSelecionadoId }
+        val diaSelecionadoRotulo: String
+            get() = dias.firstOrNull { it.data == diaSelecionado }
+                ?.let { "${it.diaSemana}, ${it.diaMes}" }.orEmpty()
     }
 }
 
-// --- Funções de data/hora (privadas ao arquivo) ---
+// ---------- Estado da Agenda do dia (médico) ----------
 
-private const val INTERVALO_RECALCULO_MS = 60_000L
+sealed interface AgendaMedicoUiState {
+    data object Carregando : AgendaMedicoUiState
+    data class Erro(val mensagem: String) : AgendaMedicoUiState
+    data class Sucesso(
+        val diaRotulo: String,
+        val consultaAtual: ConsultaAtualUi?,
+        val proximas: List<ConsultaProximaUi>
+    ) : AgendaMedicoUiState {
+        val totalConsultas: Int get() = proximas.size + if (consultaAtual != null) 1 else 0
+    }
+}
+
+class AgendaViewModel(
+    private val repo: AgendaRepository,
+    private val documentoRepo: DocumentoRepository
+) : ViewModel() {
+
+    private val diaSelecionadoManual = MutableStateFlow<String?>(null)
+    private val horarioSelecionadoId = MutableStateFlow<String?>(null)
+    private val estadoReserva = MutableStateFlow(EstadoReserva())
+    private val retryHorarios = MutableStateFlow(0)
+    private val retryMedico = MutableStateFlow(0)
+
+    private data class EstadoReserva(
+        val reservando: Boolean = false,
+        val aviso: String? = null,
+        val erro: String? = null
+    )
+
+    // A-11: recalcula sempre que o dia virar — não trava no "hoje" de quando o app abriu
+    private val chaveDoDiaFlow: Flow<String> = tickerDeUmMinuto()
+        .map { FORMATO_DATA.format(Date()) }
+        .distinctUntilChanged()
+
+    private val diasFlow: Flow<List<DiaAgenda>> = chaveDoDiaFlow.map { proximosDias(QTD_DIAS_SELETOR) }
+
+    private val diaSelecionadoFlow: Flow<String> =
+        combine(diasFlow, diaSelecionadoManual) { dias, manual ->
+            manual?.takeIf { d -> dias.any { it.data == d } } ?: dias.first().data
+        }.distinctUntilChanged()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val horariosFlow: Flow<ResultadoHorarios> =
+        combine(diaSelecionadoFlow, retryHorarios) { dia, _ -> dia }
+            .flatMapLatest { dia ->
+                repo.ouvirHorariosLivres(MEDICO_TESTE_ID, dia)
+                    .map<List<Horario>, ResultadoHorarios> { lista ->
+                        ResultadoHorarios.Sucesso(
+                            lista.mapNotNull(::horarioUiValido).filter { horarioAindaValeAPena(it, dia) }
+                        )
+                    }
+                    .onStart { emit(ResultadoHorarios.Carregando) }
+                    .catch { e ->
+                        Log.e("Goianinho", "ouvirHorariosLivres falhou", e)
+                        emit(ResultadoHorarios.Erro(mensagemDeErro(e)))
+                    }
+            }
+
+    private val proximaConsultaFlow: Flow<ProximaConsultaUi?> =
+        repo.ouvirProximaConsulta(PACIENTE_ID)
+            .map { consulta ->
+                consulta?.dataHora?.toDate()?.let { ProximaConsultaUi(formatarDiaSemanaEData(it), formatarHora(it)) }
+            }
+            .catch { e ->
+                Log.e("Goianinho", "ouvirProximaConsulta falhou", e)
+                emit(null)
+            }
+
+    private data class EstadoBasePaciente(
+        val proximaConsulta: ProximaConsultaUi?,
+        val dias: List<DiaAgenda>,
+        val diaSelecionado: String,
+        val horariosResultado: ResultadoHorarios
+    )
+
+    private val estadoBasePacienteFlow: Flow<EstadoBasePaciente> = combine(
+        proximaConsultaFlow, diasFlow, diaSelecionadoFlow, horariosFlow
+    ) { proxima, dias, diaSel, horariosResultado ->
+        EstadoBasePaciente(proxima, dias, diaSel, horariosResultado)
+    }
+
+    val uiStatePaciente: StateFlow<AgendaPacienteUiState> = combine(
+        estadoBasePacienteFlow, horarioSelecionadoId, estadoReserva
+    ) { base, horarioSelId, reserva ->
+        AgendaPacienteUiState.Sucesso(
+            medicoNome = "[NOME DO MÉDICO]",
+            proximaConsulta = base.proximaConsulta,
+            dias = base.dias,
+            diaSelecionado = base.diaSelecionado,
+            horariosCarregando = base.horariosResultado is ResultadoHorarios.Carregando,
+            horariosErro = (base.horariosResultado as? ResultadoHorarios.Erro)?.mensagem,
+            horarios = (base.horariosResultado as? ResultadoHorarios.Sucesso)?.horarios.orEmpty(),
+            horarioSelecionadoId = horarioSelId,
+            reservando = reserva.reservando,
+            aviso = reserva.aviso,
+            erroReserva = reserva.erro
+        ) as AgendaPacienteUiState
+    }
+        .catch { e -> emit(AgendaPacienteUiState.Erro(mensagemDeErro(e))) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AgendaPacienteUiState.Carregando)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val consultasHojeFlow: Flow<List<Consulta>> =
+        combine(chaveDoDiaFlow, retryMedico) { dia, _ -> dia }
+            .flatMapLatest { diaKey ->
+                val (inicio, fim) = intervaloDoDia(diaKey)
+                repo.ouvirConsultasDoDia(MEDICO_TESTE_ID, inicio, fim)
+                    .map { lista -> lista.filter { it.status != "cancelada" } }
+            }
+
+    private val pendentesFlow: Flow<Set<String>> =
+        ouvirPendentesComoFlow(documentoRepo, MEDICO_TESTE_ID)
+            .map { lista -> lista.map { it.pacienteId }.toSet() }
+            .catch { e ->
+                Log.e("Goianinho", "ouvirPendentes falhou", e)
+                emit(emptySet())
+            }
+
+    val uiStateMedico: StateFlow<AgendaMedicoUiState> = combine(
+        chaveDoDiaFlow, consultasHojeFlow, pendentesFlow, tickerDeUmMinuto()
+    ) { diaKey, consultas, comPendencia, _ ->
+        val ordenadas = consultas.sortedBy { it.dataHora?.seconds ?: Long.MAX_VALUE }
+        val atual = consultaDoMomento(consultas)
+        val proximas = ordenadas.filter { it !== atual }.map { consulta ->
+            ConsultaProximaUi(
+                hora = consulta.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
+                pacienteNome = "[PACIENTE]",
+                resumoPendente = consulta.pacienteId in comPendencia,
+                dicaEngajamento = "Dica de engajamento (texto fixo nesta fase)"
+            )
+        }
+        AgendaMedicoUiState.Sucesso(
+            diaRotulo = rotuloDoDia(diaKey),
+            consultaAtual = atual?.let {
+                ConsultaAtualUi(
+                    hora = it.dataHora?.toDate()?.let(::formatarHora).orEmpty(),
+                    pacienteNome = "[PACIENTE]",
+                    resumoPendente = it.pacienteId in comPendencia,
+                    briefing = "Motivo relatado: [MOTIVO DA CONSULTA]. Aguardando confirmação do resumo."
+                )
+            },
+            proximas = proximas
+        ) as AgendaMedicoUiState
+    }
+        .catch { e -> emit(AgendaMedicoUiState.Erro(mensagemDeErro(e))) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AgendaMedicoUiState.Carregando)
+
+    fun selecionarDia(data: String) {
+        diaSelecionadoManual.value = data
+        horarioSelecionadoId.value = null
+    }
+
+    fun selecionarHorario(horario: HorarioUi) {
+        if (estadoReserva.value.reservando) return
+        horarioSelecionadoId.value = horario.id
+    }
+
+    fun tentarDeNovoHorarios() { retryHorarios.update { it + 1 } }
+
+    fun recarregarMedico() { retryMedico.update { it + 1 } }
+
+    fun limparAviso() { estadoReserva.update { it.copy(aviso = null) } }
+
+    fun limparErroReserva() { estadoReserva.update { it.copy(erro = null) } }
+
+    // RN-08 e RNF-03: clique duplo não cria duas consultas
+    fun confirmarReserva() {
+        if (estadoReserva.value.reservando) return
+        val horario = (uiStatePaciente.value as? AgendaPacienteUiState.Sucesso)?.horarioSelecionado ?: return
+
+        viewModelScope.launch {
+            estadoReserva.update { it.copy(reservando = true, erro = null, aviso = null) }
+            repo.reservar(
+                horario = Horario(id = horario.id, medicoId = MEDICO_TESTE_ID, data = horario.data, hora = horario.hora),
+                pacienteId = PACIENTE_ID,
+                dataHora = Timestamp(horario.instante)
+            ).onSuccess {
+                horarioSelecionadoId.value = null
+                estadoReserva.update {
+                    it.copy(reservando = false, aviso = "Consulta marcada para ${rotuloCurto(horario.data)} às ${horario.hora}!")
+                }
+            }.onFailure { e ->
+                Log.e("Goianinho", "reservar falhou", e)
+                estadoReserva.update { it.copy(reservando = false, erro = mensagemDeErro(e)) }
+            }
+        }
+    }
+
+    companion object {
+        val Factory = viewModelFactory {
+            initializer {
+                val app = this[APPLICATION_KEY] as GoianinhoApp
+                AgendaViewModel(app.container.agendaRepository, app.container.documentoRepository)
+            }
+        }
+    }
+}
+
+// ---------- Privado ao arquivo ----------
+
+// TODO (Fase 3): trocar pelo uid do paciente logado de verdade quando o Módulo 1 (Login)
+// migrar e expuser o usuário atual. Precisa bater com o cadastrado no Firestore.
+private const val PACIENTE_ID = "paciente-teste-1"
+private const val QTD_DIAS_SELETOR = 14
+
+private sealed interface ResultadoHorarios {
+    data object Carregando : ResultadoHorarios
+    data class Erro(val mensagem: String) : ResultadoHorarios
+    data class Sucesso(val horarios: List<HorarioUi>) : ResultadoHorarios
+}
 
 private val NOMES_DIA_SEMANA = mapOf(
     Calendar.SUNDAY to "Dom", Calendar.MONDAY to "Seg", Calendar.TUESDAY to "Ter",
@@ -435,6 +319,13 @@ private val FORMATO_DIA_MES = SimpleDateFormat("dd", Locale.getDefault())
 private val FORMATO_HORA = SimpleDateFormat("HH:mm", Locale.getDefault())
 private val FORMATO_DATA_HORA = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
+private fun tickerDeUmMinuto(): Flow<Unit> = flow {
+    while (true) {
+        emit(Unit)
+        delay(60_000)
+    }
+}
+
 private fun proximosDias(quantidade: Int): List<DiaAgenda> {
     val calendario = Calendar.getInstance()
     return (0 until quantidade).map { offset ->
@@ -449,11 +340,15 @@ private fun proximosDias(quantidade: Int): List<DiaAgenda> {
     }
 }
 
-private fun rotuloDeHoje(): String {
-    val calendario = Calendar.getInstance()
-    val diaSemana = NOMES_DIA_SEMANA_COMPLETO[calendario.get(Calendar.DAY_OF_WEEK)].orEmpty()
-    return "$diaSemana, ${FORMATO_DIA_MES_BARRA.format(calendario.time)}"
-}
+private fun rotuloDoDia(diaKey: String): String =
+    runCatching { FORMATO_DATA.parse(diaKey) }.getOrNull()?.let { data ->
+        val cal = Calendar.getInstance().apply { time = data }
+        val diaSemana = NOMES_DIA_SEMANA_COMPLETO[cal.get(Calendar.DAY_OF_WEEK)].orEmpty()
+        "$diaSemana, ${FORMATO_DIA_MES_BARRA.format(data)}"
+    } ?: diaKey
+
+private fun rotuloCurto(diaKey: String): String =
+    runCatching { FORMATO_DATA.parse(diaKey) }.getOrNull()?.let(::formatarDiaSemanaEData) ?: diaKey
 
 private fun formatarDiaSemanaEData(data: Date): String {
     val calendario = Calendar.getInstance().apply { time = data }
@@ -463,16 +358,52 @@ private fun formatarDiaSemanaEData(data: Date): String {
 
 private fun formatarHora(data: Date): String = FORMATO_HORA.format(data)
 
-private fun intervaloDeHoje(): Pair<Timestamp, Timestamp> {
+private fun intervaloDoDia(diaKey: String): Pair<Timestamp, Timestamp> {
+    val base = runCatching { FORMATO_DATA.parse(diaKey) }.getOrNull() ?: Date()
     val inicio = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        time = base
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }
     val fim = (inicio.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
     return Timestamp(inicio.time) to Timestamp(fim.time)
 }
 
-private fun horarioParaTimestamp(data: String, hora: String): Timestamp? {
-    val date = FORMATO_DATA_HORA.parse("$data $hora") ?: return null
-    return Timestamp(date)
+// A-02: hora cadastrada à mão com formato inválido não derruba o app — só é ignorada
+private fun horarioUiValido(h: Horario): HorarioUi? {
+    val instante = runCatching { FORMATO_DATA_HORA.parse("${h.data} ${h.hora}") }.getOrNull()
+    if (instante == null) {
+        Log.e("Goianinho", "Horario com data/hora inválida ignorado: ${h.data} ${h.hora}")
+        return null
+    }
+    return HorarioUi(id = h.id, hora = h.hora, data = h.data, instante = instante)
 }
+
+// RN-14: horário de hoje que já passou não aparece na grade
+private fun horarioAindaValeAPena(h: HorarioUi, diaConsultado: String): Boolean {
+    if (diaConsultado != FORMATO_DATA.format(Date())) return true
+    return h.instante.after(Date())
+}
+
+// A-09: nunca duplica "Dr." nem deixa "Dr. " pendurado sem nome
+fun nomeDoMedicoExibicao(nome: String): String {
+    val limpo = nome.trim()
+    if (limpo.isEmpty()) return "[NOME DO MÉDICO]"
+    return if (limpo.startsWith("Dr.", ignoreCase = true)) limpo else "Dr. $limpo"
+}
+
+// A-10: plural correto
+fun rotuloDeConsultas(quantidade: Int): String =
+    if (quantidade == 1) "1 consulta" else "$quantidade consultas"
+
+// Adaptador (decisão combinada com você): embrulha a função antiga em callback do
+// Módulo 3 num Flow, sem mexer no arquivo dele. Quando o Módulo 3 migrar
+// ouvirPendentes para Flow nativo, troque esta chamada por documentoRepo.ouvirPendentes(medicoId) direto.
+private fun ouvirPendentesComoFlow(repo: DocumentoRepository, medicoId: String): Flow<List<Documento>> =
+    callbackFlow {
+        val registro = repo.ouvirPendentes(
+            medicoId = medicoId,
+            onErro = { mensagem -> close(RuntimeException(mensagem)) },
+            onMudou = { lista -> trySend(lista) }
+        )
+        awaitClose { registro.remove() }
+    }

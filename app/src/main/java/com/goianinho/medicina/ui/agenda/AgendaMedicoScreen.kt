@@ -1,14 +1,16 @@
 package com.goianinho.medicina.ui.agenda
 
-import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,16 +24,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.goianinho.medicina.ui.comum.TelaCarregando
+import com.goianinho.medicina.ui.comum.TelaErro
 import com.goianinho.medicina.ui.theme.AlertaFundo
 import com.goianinho.medicina.ui.theme.AlertaTexto
 import com.goianinho.medicina.ui.theme.AzulNoite
 import com.goianinho.medicina.ui.theme.Branco
-import com.goianinho.medicina.ui.theme.CinzaBorda
 import com.goianinho.medicina.ui.theme.CinzaTexto
 import com.goianinho.medicina.ui.theme.VerdeClaro
 import com.goianinho.medicina.ui.theme.VerdeEscuro
@@ -43,75 +47,85 @@ import com.goianinho.medicina.ui.theme.VerdePrincipal
 fun AgendaMedicoScreen(
     onVerResumo: () -> Unit,
     onIniciarChamada: () -> Unit,
-    viewModel: AgendaViewModel = viewModel()
+    viewModel: AgendaViewModel = viewModel(factory = AgendaViewModel.Factory)
 ) {
     val uiState by viewModel.uiStateMedico.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                "Agenda de hoje",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = AzulNoite
-            )
-            Text(
-                "${uiState.diaRotulo} · ${uiState.totalConsultas} consultas",
-                style = MaterialTheme.typography.bodyMedium,
-                color = CinzaTexto
-            )
-        }
+    when (val estado = uiState) {
+        AgendaMedicoUiState.Carregando -> TelaCarregando()
+        is AgendaMedicoUiState.Erro -> TelaErro(estado.mensagem, onTentarDeNovo = viewModel::recarregarMedico)
+        is AgendaMedicoUiState.Sucesso -> AgendaMedicoConteudo(
+            estado = estado,
+            onVerResumo = onVerResumo,
+            onIniciarChamada = onIniciarChamada
+        )
+    }
+}
 
-        uiState.bloqueio?.let { AvisoErro(it) }
-
-        if (uiState.temConsultaAtual) {
-            CardPacienteAtual(
-                rotulo = uiState.rotuloAtual,
-                horaAtual = uiState.horaAtual,
-                pacienteNome = uiState.pacienteAtualNome,
-                briefing = uiState.briefing,
-                onVerResumo = onVerResumo,
-                onIniciarChamada = onIniciarChamada
-            )
-        } else {
-            Text(
-                if (uiState.totalConsultas > 0) "Nenhuma consulta restante hoje." else "Nenhuma consulta hoje.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = CinzaTexto
-            )
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                "PRÓXIMAS",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                color = CinzaTexto
-            )
-            if (uiState.proximas.isEmpty()) {
+@Composable
+private fun AgendaMedicoConteudo(
+    estado: AgendaMedicoUiState.Sucesso,
+    onVerResumo: () -> Unit,
+    onIniciarChamada: () -> Unit
+) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 600.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    "Nenhuma outra consulta hoje.",
+                    "Agenda de hoje",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = AzulNoite
+                )
+                Text(
+                    "${estado.diaRotulo} · ${rotuloDeConsultas(estado.totalConsultas)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = CinzaTexto
                 )
-            } else {
-                uiState.proximas.forEach { consulta ->
-                    CardConsultaProxima(consulta)
+            }
+
+            CardPacienteAtual(
+                horaAtual = estado.consultaAtual?.hora ?: "09:30",
+                pacienteNome = estado.consultaAtual?.pacienteNome ?: "[PACIENTE A]",
+                briefing = estado.consultaAtual?.briefing
+                    ?: "Motivo relatado: [MOTIVO DA CONSULTA]. Aguardando confirmação do resumo.",
+                onVerResumo = onVerResumo,
+                onIniciarChamada = onIniciarChamada
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "PRÓXIMAS",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = CinzaTexto
+                )
+                if (estado.proximas.isEmpty()) {
+                    Text(
+                        "Nenhuma outra consulta hoje.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CinzaTexto
+                    )
+                } else {
+                    estado.proximas.forEach { consulta ->
+                        CardConsultaProxima(consulta)
+                    }
                 }
             }
         }
     }
 }
+
 @Composable
 private fun CardPacienteAtual(
-    rotulo: String,
     horaAtual: String,
     pacienteNome: String,
     briefing: String,
@@ -125,7 +139,7 @@ private fun CardPacienteAtual(
     ) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                "$rotulo · $horaAtual",
+                "AGORA · $horaAtual",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
@@ -161,7 +175,7 @@ private fun CardPacienteAtual(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(
                     onClick = onVerResumo,
-                    modifier = Modifier.weight(1f).height(48.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, Branco.copy(alpha = 0.6f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Branco)
@@ -170,7 +184,7 @@ private fun CardPacienteAtual(
                 }
                 Button(
                     onClick = onIniciarChamada,
-                    modifier = Modifier.weight(1f).height(48.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Branco, contentColor = AzulNoite)
                 ) {
@@ -183,10 +197,10 @@ private fun CardPacienteAtual(
 
 @Composable
 private fun CardConsultaProxima(consulta: ConsultaProximaUi) {
-    val (corFundo, corTexto) = when (consulta.status) {
-        StatusResumoConsulta.SEM_EXAME -> CinzaBorda to CinzaTexto
-        StatusResumoConsulta.AGUARDANDO_MEDICO -> AlertaFundo to AlertaTexto
-        StatusResumoConsulta.CONFIRMADO -> VerdeClaro to VerdePrincipal
+    val (corFundo, corTexto, rotulo) = if (consulta.resumoPendente) {
+        Triple(AlertaFundo, AlertaTexto, "Resumo aguardando você")
+    } else {
+        Triple(VerdeClaro, VerdePrincipal, "Confirmado")
     }
 
     Card(
@@ -209,7 +223,7 @@ private fun CardConsultaProxima(consulta: ConsultaProximaUi) {
                     color = AzulNoite
                 )
                 Text(
-                    consulta.status.rotulo,
+                    rotulo,
                     modifier = Modifier
                         .background(corFundo, RoundedCornerShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 4.dp),

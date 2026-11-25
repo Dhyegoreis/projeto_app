@@ -16,11 +16,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.goianinho.medicina.ui.comum.AVISO_VIDEOCHAMADA
 import com.goianinho.medicina.ui.theme.AzulNoite
 import com.goianinho.medicina.ui.theme.CinzaTexto
 import com.goianinho.medicina.ui.theme.VerdePrincipal
 
-// Módulo 4. Tela simulada da videochamada (RF-30 é "Could" nesta fase).
+// Módulo 4. Tela simulada da videochamada (RF-30, RNF-01).
 // Mantenha os parâmetros: é por eles que a navegação liga esta tela às outras.
 @Composable
 fun ChamadaEmBreveScreen(
@@ -40,7 +41,7 @@ fun ChamadaEmBreveScreen(
             textAlign = TextAlign.Center
         )
         Text(
-            "A videochamada ainda está em desenvolvimento. Nesta fase, essa tela só simula a entrada na consulta.",
+            AVISO_VIDEOCHAMADA,
             style = MaterialTheme.typography.bodyMedium,
             color = CinzaTexto,
             textAlign = TextAlign.Center
