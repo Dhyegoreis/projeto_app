@@ -38,10 +38,16 @@ class AuthRepository(
             .toObject(Usuario::class.java)
             ?: throw IllegalStateException("Perfil não encontrado")
 
-    // RF-01 e RN-01: o perfil que vale é o salvo no Firestore
+    // RF-01 e RN-01. L-03: se o perfil falhar depois do signIn, derruba a sessão
     suspend fun entrar(email: String, senha: String): Result<Usuario> = comTimeout {
-        val resultado = auth.signInWithEmailAndPassword(email, senha).await()
-        lerUsuario(resultado.user!!.uid)
+        val uid = auth.signInWithEmailAndPassword(email, senha).await().user?.uid
+            ?: error("Usuário sem uid")
+        try {
+            lerUsuario(uid)
+        } catch (e: Throwable) {
+            auth.signOut()
+            throw e
+        }
     }
 
     suspend fun buscarUsuario(uid: String): Result<Usuario> = comTimeout { lerUsuario(uid) }
