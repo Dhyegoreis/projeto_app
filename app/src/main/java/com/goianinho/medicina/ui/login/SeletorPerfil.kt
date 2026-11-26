@@ -18,7 +18,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SeletorPerfil(selecionado: String, onSelecionar: (String) -> Unit) {
+internal fun SeletorPerfil(
+    selecionado: String,
+    onSelecionar: (String) -> Unit,
+    enabled: Boolean = true
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -30,9 +34,9 @@ internal fun SeletorPerfil(selecionado: String, onSelecionar: (String) -> Unit) 
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)   // P-05: área de toque mínima
+                    .heightIn(min = 48.dp)
                     .background(if (ativo) Color.White else Color.Transparent, RoundedCornerShape(16.dp))
-                    .clickable { onSelecionar(valor) },
+                    .clickable(enabled = enabled) { onSelecionar(valor) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
