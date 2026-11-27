@@ -1,17 +1,15 @@
-
 package com.goianinho.medicina.ui.documentos
 
-import com.goianinho.medicina.ui.comum.AvisoErro
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,28 +22,37 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.goianinho.medicina.data.model.Documento
 import com.goianinho.medicina.data.model.StatusDocumento
+import com.goianinho.medicina.ui.comum.AvisoErro
 
 @Composable
 fun DocumentosScreen() {
-    val viewModel: DocumentosViewModel = viewModel()
+    val viewModel: DocumentosViewModel = viewModel(factory = DocumentosViewModel.Factory)
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // D-09: mensagem de sucesso aparece num Snackbar e é limpa depois
+    LaunchedEffect(state.mensagem) {
+        state.mensagem?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.limparMensagem()
+        }
+    }
 
     val escolherArquivo = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -56,10 +63,7 @@ fun DocumentosScreen() {
                 context.contentResolver.getType(uri) == "application/pdf"
             ) "pdf" else "imagem"
 
-            viewModel.registrarDocumento(
-                nome = nome,
-                tipo = tipo
-            )
+            viewModel.registrarDocumento(nome = nome, tipo = tipo)
         }
     }
 
@@ -67,117 +71,112 @@ fun DocumentosScreen() {
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap: Bitmap? ->
         if (bitmap != null) {
-            val bytes = java.io.ByteArrayOutputStream().also {
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, it)
-            }.toByteArray()
-
-            if (bytes.size < 900_000) {
-                val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-
+            // D-04: reduz para 1280 px e recusa acima de 700 KB
+            val base64 = fotoParaBase64(bitmap)
+            if (base64 == null) {
+                viewModel.avisarFotoGrande()
+            } else {
                 viewModel.registrarDocumento(
                     nome = "Foto do documento",
                     tipo = "imagem",
                     base64 = base64
                 )
-            } else {
-                viewModel.avisarFotoGrande()
             }
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.limparMensagem() }
-    }
+    val podeAgir = state.bloqueio == null && !state.salvando   // D-02
 
-    Scaffold { padding ->
-        Column(
+    // D-10: um Box e um único LazyColumn (sem Scaffold interno)
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Meus documentos",
-                style = MaterialTheme.typography.headlineMedium
-            )
-
-            state.bloqueio?.let { bloqueio ->
-                Spacer(Modifier.height(8.dp))
-                AvisoErro(bloqueio)
-            }
-
-            state.erro?.let { erro ->
-                Spacer(Modifier.height(8.dp))
-                AvisoErro(erro, onSumir = { viewModel.limparErro() })
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                "Selecione um exame para registrar e acompanhar a revisão médica."
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    escolherArquivo.launch(
-                        arrayOf("application/pdf", "image/*")
+            item {
+                Column {
+                    Text(
+                        text = "Meus documentos",
+                        style = MaterialTheme.typography.headlineMedium
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = state.bloqueio == null
-            ) {
-                Text("Enviar arquivo PDF ou imagem")
+
+                    state.bloqueio?.let { bloqueio ->
+                        Spacer(Modifier.height(8.dp))
+                        AvisoErro(bloqueio)
+                    }
+
+                    state.erro?.let { erro ->
+                        Spacer(Modifier.height(8.dp))
+                        AvisoErro(erro, onSumir = { viewModel.limparErro() })
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text("Selecione um exame para registrar e acompanhar a revisão médica.")
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            escolherArquivo.launch(arrayOf("application/pdf", "image/*"))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = podeAgir
+                    ) {
+                        Text("Enviar arquivo PDF ou imagem")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            // D-03: aparelho sem app de câmera não fecha o app
+                            try {
+                                tirarFoto.launch(null)
+                            } catch (e: ActivityNotFoundException) {
+                                viewModel.avisar("Não encontramos a câmera neste aparelho.")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = podeAgir
+                    ) {
+                        Text("Tirar foto")
+                    }
+
+                    if (state.salvando) {
+                        Spacer(Modifier.height(8.dp))
+                        CircularProgressIndicator()
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "Documentos anteriores",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
             }
-
-            OutlinedButton(
-                onClick = { tirarFoto.launch(null) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = state.bloqueio == null
-            ) {
-                Text("Tirar foto")
-            }
-
-            state.mensagem?.let { mensagem ->
-                Text(
-                    text = mensagem,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                text = "Documentos anteriores",
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            Spacer(Modifier.height(8.dp))
 
             if (state.carregando) {
-                CircularProgressIndicator()
+                item { CircularProgressIndicator() }
             } else if (state.documentos.isEmpty()) {
-                Text("Nenhum documento registrado ainda.")
+                item { Text("Você ainda não enviou documentos") }
             } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(
-                        items = state.documentos,
-                        key = { it.id }
-                    ) { documento ->
-                        DocumentoCard(documento)
-                    }
+                items(items = state.documentos, key = { it.id }) { documento ->
+                    DocumentoCard(documento, state.nomeMedico)
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
 @Composable
-private fun DocumentoCard(documento: Documento) {
+private fun DocumentoCard(documento: Documento, nomeMedico: String) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -201,8 +200,15 @@ private fun DocumentoCard(documento: Documento) {
 
             if (!liberado) {
                 Text(
-                    if (documento.status == StatusDocumento.ARQUIVADO) "Este documento foi arquivado."
-                    else "O resumo fica disponível depois que o médico confirmar."
+                    when (documento.status) {
+                        StatusDocumento.ARQUIVADO -> "Este documento foi arquivado."
+                        // D-07: texto da v1.6 com o nome do médico
+                        else -> if (nomeMedico.isBlank()) {
+                            "Aguardando revisão do seu médico"
+                        } else {
+                            "Aguardando revisão do Dr. $nomeMedico"
+                        }
+                    }
                 )
             } else {
                 val temObservacao = documento.observacao.isNotBlank()
