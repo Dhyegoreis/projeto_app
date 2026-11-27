@@ -1,168 +1,101 @@
-
 package com.goianinho.medicina.data.repository
 
-import android.util.Log
+import com.goianinho.medicina.data.COL_DOCUMENTOS
 import com.goianinho.medicina.data.model.Documento
 import com.goianinho.medicina.data.model.PontoResumo
 import com.goianinho.medicina.data.model.StatusDocumento
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 
-class DocumentoRepository {
+class DocumentoRepository(private val db: FirebaseFirestore) {
 
-    private val db = FirebaseFirestore.getInstance()
-    private val col = db.collection("documentos")
+    private val col = db.collection(COL_DOCUMENTOS)
 
-    fun registrar(
-        pacienteId: String,
-        medicoId: String,
-        nome: String,
-        tipo: String,
-        base64: String = "",
-        onErro: (String) -> Unit = {},
-        onResultado: (Boolean) -> Unit = {}
-    ) {
-        val resumoFixo = listOf(
-            PontoResumo(
-                "Ponto relevante 1 extraído do exame",
-                "pág. 1, linha 9"
-            ),
-            PontoResumo(
-                "Ponto relevante 2 extraído do exame",
-                "pág. 1, linha 12"
-            ),
-            PontoResumo(
-                "Ponto relevante 3 extraído do exame",
-                "pág. 2, linha 3"
-            )
-        )
+    // Resumo simulado: sempre 3 pontos com fontes fictícias
+    private val resumoSimulado = listOf(
+        PontoResumo("Ponto relevante 1 extraído do exame", "pág. 1, linha 9"),
+        PontoResumo("Ponto relevante 2 extraído do exame", "pág. 1, linha 12"),
+        PontoResumo("Ponto relevante 3 extraído do exame", "pág. 2, linha 3")
+    )
 
-        val documento = Documento(
-            pacienteId = pacienteId,
-            medicoId = medicoId,
-            nome = nome,
-            tipo = tipo,
-            imagemBase64 = base64,
-            resumo = resumoFixo,
-            status = StatusDocumento.AGUARDANDO_MEDICO
-        )
+    // Lista do paciente, atualizando em tempo real
+    fun ouvirDoPaciente(pacienteId: String, limite: Long = 20): Flow<List<Documento>> =
+        callbackFlow {
+            val registro = col
+                .whereEqualTo("pacienteId", pacienteId)
+                .orderBy("enviadoEm", Query.Direction.DESCENDING)
+                .limit(limite)
+                .addSnapshotListener { snapshot, erro ->
+                    if (erro != null) {
+                        close(erro)
+                        return@addSnapshotListener
+                    }
+                    trySend(snapshot?.toObjects(Documento::class.java).orEmpty())
+                }
+            awaitClose { registro.remove() }
+        }
 
-        col.add(documento)
-            .addOnSuccessListener { onResultado(true) }
-            .addOnFailureListener { e ->
-                Log.e("Goianinho", "registrar falhou", e)
-                onErro(traduzirErroFirestore(e))
-                onResultado(false)
-            }
-    }
-
-    fun ouvirPendentes(
-        medicoId: String,
-        onErro: (String) -> Unit = {},
-        onMudou: (List<Documento>) -> Unit
-    ): ListenerRegistration {
-        return col
+    // Fila do médico: só documentos dos pacientes dele (RN-07)
+    fun ouvirPendentes(medicoId: String): Flow<List<Documento>> = callbackFlow {
+        val registro = col
             .whereEqualTo("medicoId", medicoId)
             .whereEqualTo("status", StatusDocumento.AGUARDANDO_MEDICO)
             .addSnapshotListener { snapshot, erro ->
                 if (erro != null) {
-                    // Ex.: índice composto ainda não criado; o link aparece no Logcat
-                    Log.e("Goianinho", "ouvirPendentes falhou", erro)
-                    onMudou(emptyList())
-                    onErro(traduzirErroFirestore(erro))
-                } else {
-                    onMudou(
-                        snapshot?.toObjects(Documento::class.java)
-                            ?: emptyList()
-                    )
+                    // Se faltar índice composto, o link aparece no Logcat
+                    close(erro)
+                    return@addSnapshotListener
                 }
+                trySend(snapshot?.toObjects(Documento::class.java).orEmpty())
             }
+        awaitClose { registro.remove() }
     }
 
-    fun ouvirDoPaciente(
-        pacienteId: String,
-        limite: Long = 20,
-        onErro: (String) -> Unit = {},
-        onMudou: (List<Documento>) -> Unit
-    ): ListenerRegistration {
-        return col
-            .whereEqualTo("pacienteId", pacienteId)
-            .orderBy("enviadoEm", Query.Direction.DESCENDING)
-            .limit(limite)
-            .addSnapshotListener { snapshot, erro ->
-                if (erro != null) {
-                    // Ex.: índice composto ainda não criado; o link aparece no Logcat
-                    Log.e("Goianinho", "ouvirDoPaciente falhou", erro)
-                    onMudou(emptyList())
-                    onErro(traduzirErroFirestore(erro))
-                } else {
-                    onMudou(
-                        snapshot?.toObjects(Documento::class.java)
-                            ?: emptyList()
-                    )
-                }
-            }
+    suspend fun registrar(doc: Documento): Result<Unit> = runCatching {
+        withTimeout(10_000) {
+            col.add(
+                doc.copy(
+                    resumo = resumoSimulado,
+                    status = StatusDocumento.AGUARDANDO_MEDICO
+                )
+            ).await()
+        }
+        Unit
     }
 
-    fun confirmar(
-        docId: String,
-        medicoId: String,
-        observacao: String,
-        onErro: (String) -> Unit = {},
-        onResultado: (Boolean) -> Unit = {}
-    ) {
-        atualizarStatus(
-            docId,
-            StatusDocumento.CONFIRMADO,
-            medicoId,
-            observacao,
-            onErro,
-            onResultado
-        )
+    suspend fun confirmar(id: String, medicoId: String, observacao: String): Result<Unit> =
+        decidir(id, StatusDocumento.CONFIRMADO, medicoId, observacao)
+
+    suspend fun corrigir(id: String, medicoId: String, observacao: String): Result<Unit> {
+        if (observacao.isBlank()) {
+            return Result.failure(IllegalArgumentException("Observação obrigatória")) // RN-13
+        }
+        return decidir(id, StatusDocumento.CORRIGIDO, medicoId, observacao)
     }
 
-    fun corrigir(
-        docId: String,
-        medicoId: String,
-        observacao: String,
-        onErro: (String) -> Unit = {},
-        onResultado: (Boolean) -> Unit = {}
-    ) {
-        atualizarStatus(
-            docId,
-            StatusDocumento.CORRIGIDO,
-            medicoId,
-            observacao,
-            onErro,
-            onResultado
-        )
-    }
-
-    private fun atualizarStatus(
-        docId: String,
+    private suspend fun decidir(
+        id: String,
         status: String,
         medicoId: String,
-        observacao: String,
-        onErro: (String) -> Unit,
-        onResultado: (Boolean) -> Unit
-    ) {
-        col.document(docId).update(
-            mapOf(
-                "status" to status,
-                "observacao" to observacao,
-                "confirmadoPor" to medicoId,
-                "confirmadoEm" to FieldValue.serverTimestamp(),
-                "apoioIA" to true
-            )
-        )
-            .addOnSuccessListener { onResultado(true) }
-            .addOnFailureListener { e ->
-                Log.e("Goianinho", "atualizarStatus falhou", e)
-                onErro(traduzirErroFirestore(e))
-                onResultado(false)
-            }
+        observacao: String
+    ): Result<Unit> = runCatching {
+        withTimeout(10_000) {
+            col.document(id).update(
+                mapOf(
+                    "status" to status,
+                    "observacao" to observacao,
+                    "confirmadoPor" to medicoId,
+                    "confirmadoEm" to FieldValue.serverTimestamp(),
+                    "apoioIA" to true // RN-06
+                )
+            ).await()
+        }
+        Unit
     }
 }
