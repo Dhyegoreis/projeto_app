@@ -1,14 +1,17 @@
 package com.goianinho.medicina.ui.home
 
-import com.goianinho.medicina.ui.comum.AvisoErro
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -20,12 +23,16 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -36,6 +43,9 @@ import com.goianinho.medicina.R
 import com.goianinho.medicina.data.model.Consulta
 import com.goianinho.medicina.data.model.Documento
 import com.goianinho.medicina.data.model.StatusDocumento
+import com.goianinho.medicina.ui.comum.AVISO_VOZ
+import com.goianinho.medicina.ui.comum.AvisoErro
+import com.goianinho.medicina.ui.comum.nomeDoMedico
 import com.goianinho.medicina.ui.theme.AlertaFundo
 import com.goianinho.medicina.ui.theme.AlertaTexto
 import com.goianinho.medicina.ui.theme.AzulNoite
@@ -46,9 +56,11 @@ import com.goianinho.medicina.ui.theme.FundoApp
 import com.goianinho.medicina.ui.theme.VerdeClaro
 import com.goianinho.medicina.ui.theme.VerdeEscuro
 import com.goianinho.medicina.ui.theme.VerdePrincipal
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomePacienteScreen(
     onAbrirChat: () -> Unit,
@@ -56,110 +68,129 @@ fun HomePacienteScreen(
     onAbrirDocumentos: () -> Unit,
     onSair: () -> Unit
 ) {
-    val viewModel: HomeViewModel = viewModel()
+    val viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val state by viewModel.uiState.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
     val medico = state.nomeMedico
-    val textoAssistente = if (medico.isNotEmpty()) "Goianinho · assistente do Dr. $medico"
+    val textoAssistente = if (medico.isNotEmpty()) "Goianinho · assistente de ${nomeDoMedico(medico)}"   // H-04
     else "Goianinho · seu assistente"
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(FundoApp)
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(state.dataHoje, style = MaterialTheme.typography.bodyMedium, color = CinzaTexto)
-                Text(
-                    "Olá, ${state.nome}",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = AzulNoite
-                )
-            }
-            TextButton(onClick = {
-                viewModel.sair()
-                onSair()
-            }) { Text("Sair", color = VerdePrincipal) }
-        }
-
-        state.bloqueio?.let { AvisoErro(it) }
-
-        // Card do Goianinho
-        Card(
-            onClick = onAbrirChat,
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = VerdePrincipal),
-            shape = RoundedCornerShape(20.dp)
+    Box(Modifier.fillMaxSize().background(FundoApp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    "Em que posso ajudar hoje?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Branco
-                )
-                Text(
-                    textoAssistente,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Branco
-                )
-                Surface(
-                    onClick = onAbrirChat,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Branco
-                ) {
-                    Row(
-                        Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(state.dataHoje, style = MaterialTheme.typography.bodyMedium, color = CinzaTexto)
+                    Text(
+                        "Olá, ${state.nome}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = AzulNoite
+                    )
+                }
+                TextButton(onClick = {
+                    viewModel.sair()
+                    onSair()
+                }) { Text("Sair", color = VerdePrincipal) }
+            }
+
+            state.bloqueio?.let { AvisoErro(it) }
+
+            // Card do Goianinho
+            Card(
+                onClick = onAbrirChat,
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = VerdePrincipal),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Em que posso ajudar hoje?",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Branco
+                    )
+                    Text(
+                        textoAssistente,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Branco
+                    )
+                    Surface(
+                        onClick = onAbrirChat,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = Branco
                     ) {
-                        Text(
-                            "Escreva para o Goianinho…",
-                            modifier = Modifier.weight(1f),
-                            color = CinzaTexto
-                        )
-                        Box(
-                            Modifier.size(36.dp).background(VerdePrincipal, CircleShape),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                painterResource(R.drawable.ic_chat),
-                                contentDescription = "Abrir o chat",
-                                tint = Branco
+                            Text(
+                                "Escreva para o Goianinho…",
+                                modifier = Modifier.weight(1f),
+                                color = CinzaTexto
                             )
+                            // RNF-01: botão de voz mostra o aviso "em breve"
+                            Box(
+                                Modifier
+                                    .size(48.dp)
+                                    .background(VerdePrincipal, CircleShape)
+                                    .clickable {
+                                        scope.launch { snackbar.showSnackbar(AVISO_VOZ) }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_chat),
+                                    contentDescription = "Falar com o Goianinho",
+                                    tint = Branco
+                                )
+                            }
                         }
                     }
+                    // H-06: FlowRow quebra linha com fonte grande
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ChipAcao("Marcar consulta", onAbrirAgenda)
+                        ChipAcao("Enviar exame", onAbrirDocumentos)
+                        ChipAcao("Tirar dúvida", onAbrirChat)
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChipAcao("Marcar consulta", onAbrirAgenda)
-                    ChipAcao("Enviar exame", onAbrirDocumentos)
+            }
+
+            if (!state.temMedico) {
+                Text("Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.", color = CinzaTexto)
+            }
+            CardProximaConsulta(state.proximaConsulta, medico, onAbrirAgenda)
+
+            Text(
+                "ACOMPANHAMENTO",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = CinzaTexto
+            )
+            if (state.documentos.isEmpty()) {
+                Text("Nenhum documento enviado ainda", color = CinzaTexto)
+            } else {
+                state.documentos.forEach { doc ->
+                    ItemDocumento(doc, onAbrirDocumentos)
                 }
-                ChipAcao("Tirar dúvida", onAbrirChat)
             }
         }
 
-        if (!state.temMedico) {
-            Text("Você ainda não tem um médico vinculado. Peça para a clínica vincular sua conta.", color = CinzaTexto)
-        }
-        CardProximaConsulta(state.proximaConsulta, medico, onAbrirAgenda)
-
-        Text(
-            "ACOMPANHAMENTO",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = CinzaTexto
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
         )
-        if (state.documentos.isEmpty()) {
-            Text("Nenhum documento enviado ainda", color = CinzaTexto)
-        } else {
-            state.documentos.forEach { doc ->
-                ItemDocumento(doc, onAbrirDocumentos)
-            }
-        }
     }
 }
 
@@ -167,16 +198,18 @@ fun HomePacienteScreen(
 private fun ChipAcao(texto: String, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
+        modifier = Modifier.heightIn(min = 48.dp),   // área de toque mínima
         shape = RoundedCornerShape(20.dp),
         color = VerdePrincipal,
         border = BorderStroke(1.dp, Branco)
     ) {
-        Text(
-            texto,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            color = Branco,
-            fontWeight = FontWeight.Bold
-        )
+        Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Text(
+                texto,
+                color = Branco,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
@@ -225,7 +258,7 @@ private fun CardProximaConsulta(consulta: Consulta?, medico: String, onClick: ()
                         color = CinzaTexto
                     )
                     Text(
-                        if (medico.isNotEmpty()) "Dr. $medico" else "Seu médico",
+                        if (medico.isNotEmpty()) nomeDoMedico(medico) else "Seu médico",   // H-04
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = AzulNoite
