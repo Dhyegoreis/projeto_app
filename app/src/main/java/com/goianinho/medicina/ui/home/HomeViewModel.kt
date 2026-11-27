@@ -2,7 +2,11 @@ package com.goianinho.medicina.ui.home
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.goianinho.medicina.GoianinhoApp
 import com.goianinho.medicina.data.model.Consulta
 import com.goianinho.medicina.data.model.Documento
 import com.goianinho.medicina.data.repository.AgendaRepository
@@ -10,10 +14,10 @@ import com.goianinho.medicina.data.repository.AuthRepository
 import com.goianinho.medicina.data.repository.DocumentoRepository
 import com.goianinho.medicina.data.repository.RespostasSimuladas
 import com.goianinho.medicina.ui.comum.consultaDoMomento
+import com.goianinho.medicina.ui.comum.mensagemDeErro
 import com.goianinho.medicina.ui.comum.rotuloDaConsulta
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.ListenerRegistration
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,13 +46,13 @@ data class HomeUiState(
     val proximaDoDia: Consulta? = null,
     val rotuloProximaDoDia: String = "PRÓXIMA",   // "AGORA" | "PRÓXIMA"
     val nomesPacientes: Map<String, String> = emptyMap(),
-    val bloqueio: String? = null        // permanente: sessão, perfil, erro de listener (o Início não tem erro de ação)
+    val bloqueio: String? = null        // permanente: sessão, perfil, erro de listener
 )
 
 class HomeViewModel(
-    private val auth: AuthRepository = AuthRepository(),
-    private val documentoRepo: DocumentoRepository = DocumentoRepository(),
-    private val agendaRepo: AgendaRepository = AgendaRepository()
+    private val auth: AuthRepository,
+    private val documentoRepo: DocumentoRepository,
+    private val agendaRepo: AgendaRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState(dataHoje = dataDeHoje()))
@@ -70,22 +74,22 @@ class HomeViewModel(
             _uiState.update { it.copy(bloqueio = "Sessão expirada. Entre novamente.") }
         } else {
             viewModelScope.launch {
-                try {
-                    val usuario = auth.buscarUsuario(logado)
-                    _uiState.update {
-                        it.copy(perfil = usuario.perfil, nome = usuario.nome, bloqueio = null)
+                auth.buscarUsuario(logado).fold(
+                    onSuccess = { usuario ->
+                        _uiState.update {
+                            it.copy(perfil = usuario.perfil, nome = usuario.nome, bloqueio = null)
+                        }
+                        when (usuario.perfil) {
+                            "medico" -> iniciarComoMedico(logado)
+                            "paciente" -> iniciarComoPaciente(logado, usuario.medicoId)
+                            else -> _uiState.update { it.copy(bloqueio = "Perfil de usuário inválido.") }
+                        }
+                    },
+                    onFailure = { e ->
+                        Log.e("Goianinho", "Início: falha ao buscar o perfil", e)
+                        _uiState.update { it.copy(bloqueio = mensagemDeErro(e)) }
                     }
-                    when (usuario.perfil) {
-                        "medico" -> iniciarComoMedico(logado)
-                        "paciente" -> iniciarComoPaciente(logado, usuario.medicoId)
-                        else -> _uiState.update { it.copy(bloqueio = "Perfil de usuário inválido.") }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.e("Goianinho", "Início: falha ao buscar o perfil", e)
-                    _uiState.update { it.copy(bloqueio = "Não foi possível carregar seu perfil.") }
-                }
+                )
             }
         }
     }
@@ -102,14 +106,12 @@ class HomeViewModel(
         }
         if (medicoId.isNotBlank()) {
             viewModelScope.launch {
-                try {
-                    val nome = auth.buscarUsuario(medicoId).nome
-                    _uiState.update { it.copy(nomeMedico = nome) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.e("Goianinho", "Início: falha ao buscar o nome do médico", e)
-                }
+                auth.buscarUsuario(medicoId).fold(
+                    onSuccess = { u -> _uiState.update { it.copy(nomeMedico = u.nome) } },
+                    onFailure = { e ->
+                        Log.e("Goianinho", "Início: falha ao buscar o nome do médico", e)
+                    }
+                )
             }
         }
     }
@@ -155,16 +157,16 @@ class HomeViewModel(
         if (id.isBlank() || nomesPacientes.containsKey(id) || id in nomesEmBusca) return
         nomesEmBusca += id
         viewModelScope.launch {
-            try {
-                nomesPacientes[id] = auth.buscarUsuario(id).nome
-                _uiState.update { it.copy(nomesPacientes = nomesPacientes.toMap()) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e("Goianinho", "Início: falha ao buscar o nome do paciente", e)
-            } finally {
-                nomesEmBusca.remove(id)
-            }
+            auth.buscarUsuario(id).fold(
+                onSuccess = { u ->
+                    nomesPacientes[id] = u.nome
+                    _uiState.update { it.copy(nomesPacientes = nomesPacientes.toMap()) }
+                },
+                onFailure = { e ->
+                    Log.e("Goianinho", "Início: falha ao buscar o nome do paciente", e)
+                }
+            )
+            nomesEmBusca.remove(id)
         }
     }
 
@@ -197,6 +199,15 @@ class HomeViewModel(
         listenerPendentes?.remove()
         listenerConsultasDia?.remove()
         super.onCleared()
+    }
+
+    companion object {
+        val Factory = viewModelFactory {
+            initializer {
+                val c = (this[APPLICATION_KEY] as GoianinhoApp).container
+                HomeViewModel(c.authRepository, c.documentoRepository, c.agendaRepository)
+            }
+        }
     }
 }
 
